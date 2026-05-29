@@ -1,0 +1,1245 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LKW Planer</title>
+<style>
+  :root{
+    --bg:#0e1318; --panel:#171f29; --panel2:#1d2733; --input:#0f161e;
+    --line:#2c3845; --line2:#222c38;
+    --text:#e6eaf0; --muted:#94a1b2; --accent:#3b82f6; --accent-d:#2563eb;
+    --danger:#f04444; --ok:#34d399; --warn:#fbbf24;
+    --shadow:0 1px 2px rgba(0,0,0,.30),0 2px 6px rgba(0,0,0,.30);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+    color:var(--text);background:var(--bg);display:flex;flex-direction:column;
+    height:100vh;overflow:hidden;font-size:13px;
+  }
+  /* ---------- obere Hälfte (fix) ---------- */
+  #top{height:50vh;min-height:300px;display:flex;flex-direction:column;
+       border-bottom:2px solid var(--line);background:var(--panel);}
+  #toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;
+           padding:10px 14px;border-bottom:1px solid var(--line2);}
+  #toolbar label{font-weight:600;color:var(--muted);}
+  select,input,button{font-family:inherit;font-size:13px;}
+  select,.txt{
+    border:1px solid var(--line);border-radius:7px;padding:6px 9px;background:var(--input);color:var(--text);
+  }
+  select option{background:var(--panel2);color:var(--text);}
+  select:focus,.txt:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent);}
+  button{
+    border:1px solid var(--line);border-radius:7px;padding:7px 12px;background:var(--panel2);
+    cursor:pointer;display:inline-flex;align-items:center;gap:6px;color:var(--text);font-weight:600;
+    transition:background .12s,border-color .12s;
+  }
+  button:hover{background:#27313e;border-color:#3a4756;}
+  button:disabled{opacity:.4;cursor:not-allowed;}
+  button:disabled:hover{background:var(--panel2);border-color:var(--line);}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+  button.primary:hover{background:var(--accent-d);}
+  button.icon{padding:7px;width:34px;height:34px;justify-content:center;}
+  button.ghostdanger{color:var(--danger);border-color:#5a2e30;}
+  button.ghostdanger:hover{background:#2a1a1c;}
+  .spacer{flex:1}
+  #stageWrap{flex:1;display:flex;min-height:0;}
+  #stage{flex:1;display:flex;flex-direction:column;min-width:0;padding:10px 14px;}
+  #truckBox{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;overflow:hidden;}
+  #truckSvg{width:100%;height:100%;}
+  #totals{padding:8px 2px 0;color:var(--muted);font-weight:600;display:flex;gap:20px;flex-wrap:wrap;}
+  #totals b{color:var(--text)}
+  #totals .bad{color:var(--danger)}
+  #infoPanel{width:320px;border-left:1px solid var(--line2);display:flex;flex-direction:column;min-height:0;}
+  #infoHead{padding:9px 14px;font-weight:700;border-bottom:1px solid var(--line2);background:var(--panel2);
+            display:flex;justify-content:space-between;align-items:baseline;gap:8px;}
+  #infoHead .infocount{font-weight:700;color:var(--accent);font-size:12px;white-space:nowrap;}
+  #infoHead .infocount.bad{color:var(--danger);}
+  #infoBody{flex:1;overflow:auto;padding:8px 10px;font-size:12px;}
+  .inforow{display:flex;gap:8px;align-items:center;padding:5px 6px;border-radius:6px;}
+  .inforow:nth-child(odd){background:rgba(255,255,255,.03);}
+  .infodot{width:11px;height:11px;border-radius:3px;flex:none;border:1px solid rgba(255,255,255,.2);}
+  .infotxt{flex:1;line-height:1.35;}
+  .infotxt small{color:var(--muted);}
+  #fitMsg{margin:6px;padding:8px 10px;border-radius:8px;font-weight:700;text-align:center;}
+  .fit-ok{background:rgba(52,211,153,.13);color:var(--ok);}
+  .fit-bad{background:rgba(240,68,68,.15);color:var(--danger);}
+  /* ---------- untere Hälfte (scroll) ---------- */
+  #list{flex:1;overflow:auto;padding:10px 14px;display:flex;flex-direction:column;gap:7px;}
+  #listHead{display:flex;gap:10px;align-items:flex-end;padding:0 12px 4px 18px;
+            color:var(--muted);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;}
+  #listHead span[data-sort]{cursor:pointer;user-select:none;white-space:nowrap;}
+  #listHead span[data-sort]:hover{color:var(--text);}
+  #listHead .sortarrow{color:var(--accent);margin-left:2px;}
+  /* Auftragszeile aufblitzen (Klick auf Palette) */
+  @keyframes rowflash{0%,100%{box-shadow:var(--shadow);} 25%,60%{box-shadow:0 0 0 2px var(--c,#fff), 0 0 16px 3px var(--c,#fff);}}
+  .order.flash{animation:rowflash 1.1s ease;}
+  /* Paletten aufblitzen (Fokus in Tabellenzeile) */
+  @keyframes palpulse{0%,100%{stroke:rgba(0,0,0,.45);stroke-width:12px;} 35%,65%{stroke:#fff;stroke-width:65px;}}
+  svg g.palflash > rect{animation:palpulse .9s ease;}
+  .order{
+    background:color-mix(in srgb, var(--c,#888) 13%, var(--panel));
+    border:1px solid color-mix(in srgb, var(--c,#888) 28%, var(--line));
+    border-left:6px solid var(--c,#888);
+    border-radius:9px;box-shadow:var(--shadow);padding:7px 10px 7px 8px;
+    display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;
+  }
+  .order.inactive{opacity:.5;}
+  /* aktive Zeilen: kräftigerer Rand, linker Farbrand heller */
+  .order:not(.inactive){
+    border-color:color-mix(in srgb, var(--c,#888) 60%, var(--line));
+    border-left-color:color-mix(in srgb, var(--c,#888) 55%, #fff);
+    box-shadow:0 0 0 1.5px color-mix(in srgb, var(--c,#888) 40%, transparent), var(--shadow);
+  }
+  .swatch{width:14px;height:14px;border-radius:4px;background:var(--c,#888);border:1px solid rgba(255,255,255,.25);flex:none;align-self:center;}
+  .fld{display:flex;flex-direction:column;gap:2px;flex:none;}
+  .fld label{font-size:9.5px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.02em;white-space:nowrap;}
+  .fld .txt,.fld select{padding:4px 6px;width:100%;}
+  .chk{display:flex;align-items:center;gap:5px;font-weight:600;font-size:11px;flex:none;align-self:center;white-space:nowrap;}
+  .chk input{width:15px;height:15px;}
+  .chk.disabled{opacity:.45;}
+  .lmeter{margin-left:auto;font-weight:700;color:#cdd9ff;background:rgba(59,130,246,.16);border:1px solid rgba(59,130,246,.35);
+          padding:4px 9px;border-radius:7px;white-space:nowrap;align-self:center;}
+  .numbox{display:flex;align-items:stretch;border:1px solid var(--line);border-radius:7px;overflow:hidden;background:var(--input);}
+  .numbox input{border:none;width:40px;text-align:center;padding:4px 2px;background:var(--input);color:var(--text);}
+  .numbox input:focus{outline:2px solid var(--accent);outline-offset:-2px;}
+  .numbox button{border:none;border-radius:0;padding:0 8px;background:var(--panel2);font-weight:800;color:var(--text);}
+  .numbox button:hover{background:#2c3744;}
+  .numbox .sep{width:1px;background:var(--line);}
+  .del{align-self:center;flex:none;}
+  /* Feldbreiten */
+  .w-num{width:120px}.w-kunde{width:140px}.w-datum{width:84px}.w-dest{width:62px}
+  .w-pal{width:54px}.w-mm{width:64px}.w-art{width:128px}
+  svg .pal-label{font-weight:700;fill:#11203a;paint-order:stroke;stroke:rgba(255,255,255,.75);stroke-width:60px;}
+  /* paste modal */
+  #modal,#nameModal,#settingsModal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:50;}
+  #modal.open,#nameModal.open,#settingsModal.open{display:flex;}
+  #nameInput{width:100%;font-size:14px;padding:9px 11px;margin-bottom:2px;}
+  .settingsbox{width:min(640px,94vw);max-height:88vh;overflow:auto;}
+  .settingsbox h4{margin:16px 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);}
+  .thead{display:flex;gap:7px;padding:0 2px 3px;font-size:9.5px;font-weight:800;text-transform:uppercase;color:var(--muted);}
+  .trow,.addtruck{display:flex;gap:7px;align-items:center;margin-bottom:6px;}
+  .trow .txt,.addtruck .txt{padding:6px 8px;font-size:13px;margin:0;}
+  .tname{flex:1;min-width:0;}
+  .tdim{width:74px;flex:none;text-align:center;}
+  .addtruck #ntAdd{width:38px;padding:6px;justify-content:center;font-size:18px;font-weight:800;flex:none;}
+  .settingsbox .chk{font-weight:600;}
+  .modalbox{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;width:min(680px,92vw);box-shadow:0 20px 50px rgba(0,0,0,.5);}
+  .modalbox h3{margin:0 0 4px;}
+  .modalbox p{margin:0 0 10px;color:var(--muted);}
+  .modalbox textarea{width:100%;height:200px;border:1px solid var(--line);border-radius:8px;padding:10px;background:var(--input);color:var(--text);
+    font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;resize:vertical;}
+  .modalbtns{display:flex;justify-content:flex-end;gap:8px;margin-top:12px;}
+  .empty{grid-column:1/-1;color:var(--muted);text-align:center;padding:40px;font-style:italic;}
+  /* Reset zwei-Klick */
+  #btnReset.armed{background:var(--danger);border-color:var(--danger);color:#fff;}
+  #btnReset.armed:hover{background:#b91c1c;}
+  /* Toasts */
+  #toasts{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:60;
+          display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none;}
+  .toast{pointer-events:auto;background:#1f2733;color:#fff;padding:10px 14px;border-radius:9px;
+         box-shadow:0 8px 24px rgba(0,0,0,.25);max-width:600px;font-size:12.5px;
+         display:flex;gap:10px;align-items:flex-start;line-height:1.45;}
+  .toast.warn{background:#fff7ed;color:#9a3412;border:1px solid #fdba74;}
+  .toast.ok{background:#ecfdf3;color:#166534;border:1px solid #86efac;}
+  .toast pre{margin:4px 0 0;font-size:11px;white-space:pre-wrap;opacity:.85;font-family:ui-monospace,monospace;}
+  .toast .x{margin-left:auto;cursor:pointer;font-weight:800;border:none;background:none;color:inherit;font-size:15px;line-height:1;padding:0 2px;}
+  .toast b{font-weight:800;}
+</style>
+</head>
+<body>
+
+<div id="top">
+  <div id="toolbar">
+    <label for="truckSel">LKW</label>
+    <select id="truckSel"></select>
+    <button id="btnAdd"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>Neuer Auftrag</button>
+    <button id="btnPaste"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="3" width="8" height="4" rx="1"/><path d="M9 5H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3"/></svg>Aus Zwischenablage</button>
+    <button id="btnRefresh" class="icon" title="Aktualisieren">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+    </button>
+    <button id="btnUndo" class="icon" title="Rückgängig (Strg+Z)" disabled>
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a6 6 0 0 1 0 12H9"/></svg>
+    </button>
+    <button id="btnDeselect" title="Alle Aufträge auf inaktiv setzen"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M16 9l-6 6-3-3"/></svg>Alle inaktiv</button>
+    <div class="spacer"></div>
+    <button id="btnExport" class="icon" title="Ladung als JSON exportieren">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M8 11l4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+    </button>
+    <button id="btnImport" class="icon" title="Ladung aus JSON importieren">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15V3M8 7l4-4 4 4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+    </button>
+    <input type="file" id="fileImport" accept="application/json,.json" style="display:none">
+    <button id="btnSettings" class="icon" title="Einstellungen (LKW-Typen, Anzeige)">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+    <button id="btnReset" class="ghostdanger"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M6 6l1 14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-14"/></svg><span id="resetLabel">Alle löschen / Reset</span></button>
+  </div>
+  <div id="stageWrap">
+    <div id="stage">
+      <div id="truckBox"><svg id="truckSvg" preserveAspectRatio="xMidYMid meet"></svg></div>
+      <div id="totals"></div>
+    </div>
+    <div id="infoPanel">
+      <div id="infoHead">Ladeinfo</div>
+      <div id="fitMsg" class="fit-ok">–</div>
+      <div id="infoBody"></div>
+    </div>
+  </div>
+</div>
+
+<div id="list"></div>
+
+<div id="toasts"></div>
+
+<div id="modal">
+  <div class="modalbox">
+    <h3>Aufträge einfügen</h3>
+    <p>Inhalt aus dem Planungssystem hier einfügen (STRG+V) und auf „Übernehmen“ klicken.</p>
+    <textarea id="pasteArea" placeholder="1  *3911510  Landkost  25.03.26 AT43 9013 01 11  16  5  1200 1059 2000&#10;..."></textarea>
+    <div class="modalbtns">
+      <button id="pasteCancel">Abbrechen</button>
+      <button id="pasteOk" class="primary">Übernehmen</button>
+    </div>
+  </div>
+</div>
+
+<div id="nameModal">
+  <div class="modalbox">
+    <h3>Ladung exportieren</h3>
+    <p>Dateiname für die JSON-Datei:</p>
+    <input id="nameInput" class="txt" autocomplete="off">
+    <div class="modalbtns">
+      <button id="nameCancel">Abbrechen</button>
+      <button id="nameOk" class="primary">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<div id="settingsModal">
+  <div class="modalbox settingsbox">
+    <h3>Einstellungen</h3>
+    <h4>LKW-Typen <span style="text-transform:none;font-weight:600">(Maße in Metern)</span></h4>
+    <div class="thead"><span class="tname">Name</span><span class="tdim">Länge</span><span class="tdim">Breite</span><span class="tdim">Höhe</span><span style="width:34px"></span></div>
+    <div id="truckTable"></div>
+    <div class="addtruck">
+      <input id="ntName" class="txt tname" placeholder="Neuer Typ">
+      <input id="ntL" class="txt tdim" placeholder="L" inputmode="decimal">
+      <input id="ntW" class="txt tdim" placeholder="B" inputmode="decimal">
+      <input id="ntH" class="txt tdim" placeholder="H" inputmode="decimal">
+      <button id="ntAdd" class="primary" title="LKW-Typ hinzufügen">+</button>
+    </div>
+    <h4>Anzeige</h4>
+    <label class="chk"><input type="checkbox" id="setCrosshair"> Fadenkreuz / Distanzanzeige beim Überfahren freier Lücken</label>
+    <div class="modalbtns">
+      <button id="setResetTrucks" class="ghostdanger">Standard-LKW wiederherstellen</button>
+      <button id="settingsClose" class="primary">Schließen</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* ============================ LKW-Daten (mm) ============================ */
+const DEFAULT_TRUCKS = {
+  "Kühler":             {l:13300, w:2400, h:2600},
+  "Plane":              {l:13600, w:2450, h:2650},
+  "Motorwagen Wenzel":  {l:7200,  w:2450, h:2500},
+  "Motorwagen Tüske":   {l:8000,  w:2450, h:2700},
+};
+let TRUCKS = {};
+let currentTruck = "Plane";
+const settings = { showCrosshair: true };
+const cloneDefaults = () => JSON.parse(JSON.stringify(DEFAULT_TRUCKS));
+function loadConfig(){
+  try{
+    const t = JSON.parse(localStorage.getItem("lkwPlaner.trucks"));
+    TRUCKS = (t && typeof t==="object" && Object.keys(t).length) ? t : cloneDefaults();
+  }catch(_){ TRUCKS = cloneDefaults(); }
+  try{
+    const s = JSON.parse(localStorage.getItem("lkwPlaner.settings"));
+    if(s && typeof s==="object") Object.assign(settings, s);
+  }catch(_){}
+  if(!TRUCKS[currentTruck]) currentTruck = Object.keys(TRUCKS)[0] || "Plane";
+}
+function saveTrucks(){ try{ localStorage.setItem("lkwPlaner.trucks", JSON.stringify(TRUCKS)); }catch(_){} }
+function saveSettings(){ try{ localStorage.setItem("lkwPlaner.settings", JSON.stringify(settings)); }catch(_){} }
+loadConfig();
+
+/* ============================ Farbpalette ============================ */
+const PALETTE = ["#2563eb","#16a34a","#d97706","#9333ea","#dc2626","#0891b2",
+  "#ca8a04","#db2777","#4f46e5","#15803d","#b45309","#0d9488","#7c3aed","#e11d48"];
+let colorIdx = 0;
+const nextColor = () => PALETTE[(colorIdx++) % PALETTE.length];
+
+/* ============================ Modell ============================ */
+let uid = 1;
+let orders = [];
+
+function makeOrder(data={}){
+  return Object.assign({
+    id: uid++,
+    color: nextColor(),
+    auftragsnummer:"", kunde:"", lieferdatum:"", destCode:"",
+    anzahl:1, laenge:1200, breite:800, hoehe:1200,
+    ladeart:"optimiert", reihenfolge:1,
+    stapelbar:false, aktiv:false,
+  }, data);
+}
+
+/* ============================ Undo-History ============================ */
+let history = [];
+const HISTORY_MAX = 200;
+function snapshot(){ return JSON.stringify({orders, uid, colorIdx, currentTruck}); }
+// vor jeder Änderung aufrufen: sichert den aktuellen Zustand
+function record(){
+  history.push(snapshot());
+  if(history.length > HISTORY_MAX) history.shift();
+  updateUndoBtn();
+}
+function undo(){
+  if(!history.length) return;
+  const s = JSON.parse(history.pop());
+  orders = s.orders; uid = s.uid; colorIdx = s.colorIdx; currentTruck = s.currentTruck;
+  const sel = document.getElementById("truckSel"); if(sel) sel.value = currentTruck;
+  renderAll(); updateUndoBtn();
+}
+function updateUndoBtn(){
+  const b = document.getElementById("btnUndo"); if(b) b.disabled = history.length===0;
+}
+
+/* ============================ Parsing Zwischenablage ============================ */
+const DATE_RE = /^\d{2}\.\d{2}\.\d{2}$/;
+// versucht eine Zeile zu einem Auftrag zu parsen; null wenn unvollständig
+function parseLine(line){
+  const t = line.split(/\s+/);
+  if(t.length < 8) return null;
+  const di = t.findIndex(x => DATE_RE.test(x));   // Datums-Anker
+  if(di < 2) return null;                          // davor: Idx + JobNr (+Kunde)
+  if(di + 4 >= t.length - 3) return null;          // Palettenanzahl muss vor L/B/H liegen
+  const L = parseNum(t[t.length-3]), B = parseNum(t[t.length-2]), H = parseNum(t[t.length-1]);
+  if([L,B,H].some(v => v==null || v<=0)) return null;   // L/B/H müssen gültige Zahlen sein
+  const anzahl = parseInt(t[di+4],10);
+  if(!Number.isFinite(anzahl) || anzahl <= 0) return null; // Palettenanzahl muss gültig sein
+  return makeOrder({
+    auftragsnummer: t[1].replace(/\*/g,""),        // * entfernen, C bleibt
+    kunde: t.slice(2, di).join(" "),
+    lieferdatum: t[di],
+    destCode: t[di+1] || "",
+    anzahl, laenge:L, breite:B, hoehe:H,
+  });
+}
+function parseClipboard(text){
+  const orders = [], skipped = [];
+  for(const raw of text.split(/\r?\n/)){
+    const line = raw.trim();
+    if(!line) continue;
+    const parsed = parseLine(line);
+    if(parsed){ orders.push(parsed); }
+    else if(/^\d+\s/.test(line)){ skipped.push(line); }  // sieht aus wie Datenzeile, aber unvollständig
+    // andere Zeilen (Kopfzeilen/Müll) still ignorieren
+  }
+  return {orders, skipped};
+}
+function parseNum(s){
+  if(s==null) return null;
+  const v = parseFloat(String(s).replace(",","."));
+  return Number.isFinite(v) ? v : null;
+}
+
+/* ============================ Beladungs-Algorithmus ============================ */
+// Topdown: X = LKW-Länge (vorne=links), Y = LKW-Breite.
+// "lang"  -> Länge zeigt in Fahrtrichtung (X), Breite quer (Y)
+// "breit" -> Breite zeigt in Fahrtrichtung (X), Länge quer (Y)
+function orientations(o){
+  return {
+    lang:  {fx:o.laenge, fy:o.breite},
+    breit: {fx:o.breite, fy:o.laenge},
+  };
+}
+function isStackable(o, truck){
+  return o.stapelbar && (2*o.hoehe <= truck.h);
+}
+// Mögliche Reihen-Zusammensetzungen über die LKW-Breite (lang/breit gemischt).
+// Liefert je Palettenzahl die geringste Tiefe und die vollste (= breiteste) Belegung.
+function rowCandidates(o, W){
+  const lang  = {fx:o.laenge, fy:o.breite};   // lang:  Länge längs, Breite quer
+  const breit = {fx:o.breite, fy:o.laenge};   // breit: Breite längs, Länge quer
+  const maxL = Math.floor(W / lang.fy);
+  const maxB = Math.floor(W / breit.fy);
+  const best = {};   // count -> {depth, width, comp:[orientierungen]}
+  for(let cl=0; cl<=maxL; cl++){
+    for(let cb=0; cb<=maxB; cb++){
+      if(cl+cb===0) continue;
+      const width = cl*lang.fy + cb*breit.fy;
+      if(width > W + 0.01) continue;
+      const depth = Math.max(cl>0?lang.fx:0, cb>0?breit.fx:0);
+      const c = cl+cb;
+      const cur = best[c];
+      // bevorzuge geringste Tiefe; bei Gleichstand die vollste Reihe (mehr Breite genutzt)
+      if(!cur || depth < cur.depth-0.01 || (Math.abs(depth-cur.depth)<0.01 && width > cur.width+0.01)){
+        const comp = [];
+        for(let i=0;i<cl;i++) comp.push(lang);
+        for(let i=0;i<cb;i++) comp.push(breit);
+        best[c] = {depth, width, comp};
+      }
+    }
+  }
+  if(Object.keys(best).length===0){   // Palette breiter als LKW -> 1 Stück (Überbreite)
+    best[1] = {depth:lang.fx, width:lang.fy, comp:[lang]};
+  }
+  return best;
+}
+// Reihen-Plan für G Stellplätze. "optimiert" minimiert die Gesamttiefe per DP und
+// mischt lang/breit innerhalb einer Reihe, damit die Breite voll genutzt wird.
+function planRows(o, W, G){
+  if(G<=0) return [];
+  if(o.ladeart==="lang" || o.ladeart==="breit"){
+    const ori = (o.ladeart==="lang") ? {fx:o.laenge, fy:o.breite} : {fx:o.breite, fy:o.laenge};
+    const per = Math.max(1, Math.floor(W / ori.fy));
+    const rows = [];
+    for(let left=G; left>0; left-=per){
+      rows.push({depth:ori.fx, comp:Array(Math.min(per,left)).fill(ori)});
+    }
+    return rows;
+  }
+  // optimiert: DP über Palettenzahl -> minimale Gesamttiefe
+  const cand = rowCandidates(o, W);
+  const counts = Object.keys(cand).map(Number).sort((a,b)=>a-b);
+  const f = new Array(G+1).fill(Infinity), choice = new Array(G+1).fill(0);
+  f[0] = 0;
+  for(let n=1; n<=G; n++){
+    for(let i=counts.length-1; i>=0; i--){     // große Reihen zuerst -> bei Gleichstand vollere Reihe
+      const c = counts[i];
+      if(c>n) continue;
+      const val = cand[c].depth + f[n-c];
+      if(val < f[n] - 0.01){ f[n]=val; choice[n]=c; }
+    }
+  }
+  const rows = [];
+  for(let n=G; n>0; ){
+    const c = choice[n] || counts[0];
+    rows.push({depth:cand[c].depth, comp:cand[c].comp.slice()});
+    n -= c;
+  }
+  return rows;
+}
+// Gesamttiefe (= Lademeter) der Querreihen-Variante
+function rowsLength(o, W, ground){
+  return planRows(o, W, ground).reduce((s,r)=>s+r.depth, 0);
+}
+// --- Variante B: Längsbahnen (Spalten). Probiert alle Lang-/Breit-Bahn-Kombinationen
+// und balanciert die Paletten, um die maximale Bahnlänge (= Lademeter) zu minimieren.
+function lanesPlan(o, W, ground){
+  const a = o.laenge, b = o.breite;           // Lang-Bahn: Breite b, Länge je Palette a
+  const maxLang = Math.floor(W / b), maxBreit = Math.floor(W / a);
+  let best = null;
+  for(let nl=0; nl<=maxLang; nl++){
+    for(let nb=0; nb<=maxBreit; nb++){
+      if(nl+nb===0 || nl*b + nb*a > W + 0.01) continue;
+      const lanes = [];
+      for(let i=0;i<nl;i++) lanes.push({unit:a, width:b, count:0});  // Lang-Bahn
+      for(let i=0;i<nb;i++) lanes.push({unit:b, width:a, count:0});  // Breit-Bahn
+      for(let k=0;k<ground;k++){                                     // Paletten ausbalancieren
+        let bl = lanes[0];
+        for(const ln of lanes) if((ln.count+1)*ln.unit < (bl.count+1)*bl.unit) bl = ln;
+        bl.count++;
+      }
+      const length = Math.max(...lanes.map(l=>l.count*l.unit));
+      if(!best || length < best.length-0.01) best = {lanes, length};
+    }
+  }
+  if(!best) best = {lanes:[{unit:a, width:b, count:ground}], length:ground*a};  // Überbreite
+  return best;
+}
+// Bestes Packen eines Auftrags -> Streifen.
+//  mode "lanes": waagerechte Bahnen (jede einzeln in Lücken schiebbar).
+//  mode "rows":  Querreihen als (rigider) Block; auch für feste Ladeart lang/breit.
+function packGround(o, W, ground){
+  if(ground<=0) return {mode:"none"};
+  if(o.ladeart!=="lang" && o.ladeart!=="breit"){
+    const lp = lanesPlan(o, W, ground), rl = rowsLength(o, W, ground);
+    if(lp.length <= rl + 0.01){                      // Bahnen bei Gleichstand bevorzugen (verschachteln besser)
+      const strips = []; let y = 0;
+      for(const ln of lp.lanes){
+        const units = [];
+        for(let k=0;k<ln.count;k++) units.push({w:ln.unit, h:ln.width});
+        strips.push({y, h:ln.width, units});
+        y += ln.width;
+      }
+      return {mode:"lanes", strips};
+    }
+  }
+  // Reihen-Modus (rigider Block)
+  const block = []; let x = 0;
+  for(const row of planRows(o, W, ground)){
+    let y = 0;
+    for(const ori of row.comp){ block.push({x, y, w:ori.fx, h:ori.fy}); y += ori.fy; }
+    x += row.depth;
+  }
+  return {mode:"rows", block};
+}
+// Lademeter eines einzelnen Auftrags (alleine geladen), aufgerundet auf 0,1 m
+function orderLademeter(o, truck){
+  if(!(o.anzahl>0)) return 0;
+  const stack = isStackable(o, truck);
+  const ground = stack ? Math.ceil(o.anzahl/2) : o.anzahl;
+  if(ground<=0) return 0;
+  let len = rowsLength(o, truck.w, ground);
+  if(o.ladeart!=="lang" && o.ladeart!=="breit") len = Math.min(len, lanesPlan(o, truck.w, ground).length);
+  return Math.ceil(len / 100) / 10;
+}
+
+// Skyline (Frontlinie je Breiten-Position) für die Block-Verzahnung
+function skyMax(sky, ya, yb){
+  let m = 0;
+  for(const s of sky) if(s.y1 > ya+0.01 && s.y0 < yb-0.01) m = Math.max(m, s.x);
+  return m;
+}
+function skySet(sky, ya, yb, x){
+  const out = [];
+  for(const s of sky){
+    if(s.y1 <= ya+0.01 || s.y0 >= yb-0.01){ out.push(s); continue; }
+    if(s.y0 < ya-0.01) out.push({y0:s.y0, y1:ya, x:s.x});
+    if(s.y1 > yb+0.01) out.push({y0:yb, y1:s.y1, x:s.x});
+  }
+  out.push({y0:ya, y1:yb, x});
+  out.sort((a,b)=>a.y0-b.y0);
+  return out;
+}
+function skyGlobalMax(sky){ let m = 0; for(const s of sky) m = Math.max(m, s.x); return m; }
+// "Gratis"-Lückenfüllung: einzelne Paletten in bestehende Vertiefungen setzen,
+// ohne die bisherige Gesamtlänge zu erhöhen (füllt sonst tote Ecken zwischen Aufträgen).
+function gapFill(sky, W, oris, maxN){
+  const placed = []; const gMax = skyGlobalMax(sky);
+  if(gMax<=0) return {placed, sky};
+  let n = maxN;
+  while(n>0){
+    let best = null;
+    const ys = new Set([0]); for(const s of sky){ ys.add(s.y0); ys.add(s.y1); }
+    for(const ori of oris) for(const y of ys){
+      if(y < -0.01 || y+ori.fy > W+0.01) continue;
+      const x = skyMax(sky, y, y+ori.fy);
+      if(x + ori.fx > gMax + 0.01) continue;          // muss „gratis" unter die Decke passen
+      const area = ori.fx*ori.fy;
+      if(!best || x < best.x-0.01 || (Math.abs(x-best.x)<0.01 && area > best.area))
+        best = {x, y, w:ori.fx, h:ori.fy, area};
+    }
+    if(!best) break;
+    placed.push(best);
+    sky = skySet(sky, best.y, best.y+best.h, best.x+best.w);
+    n--;
+  }
+  return {placed, sky};
+}
+
+// Platziert eine FESTE Auftrags-Reihenfolge sequenziell auf der Skyline.
+function layoutSequence(seq, truck){
+  const W = truck.w;
+  const placements = [];
+  let sky = [{y0:0, y1:W, x:0}];            // Frontlinie, anfangs überall vorne (x=0)
+  for(const o of seq){
+    const stack = isStackable(o, truck);
+    let ground = stack ? Math.ceil(o.anzahl/2) : o.anzahl;
+    if(ground<=0) continue;
+    let left = o.anzahl;
+    const sc = ()=>{ const s = stack ? Math.min(2, left) : 1; left -= s; return s; };
+    const lang = {fx:o.laenge, fy:o.breite}, breit = {fx:o.breite, fy:o.laenge};
+    const oris = o.ladeart==="lang" ? [lang] : o.ladeart==="breit" ? [breit] : [lang, breit];
+
+    // 1) gratis-Lückenfüllung in Vertiefungen vorheriger Aufträge
+    const gf = gapFill(sky, W, oris, ground);
+    for(const p of gf.placed) placements.push({ x:p.x, y:p.y, w:p.w, h:p.h, color:o.color, order:o, stack:sc() });
+    sky = gf.sky; ground -= gf.placed.length;
+    if(ground<=0) continue;
+
+    // 2) Rest als optimales Paket (Bahnen/Reihen) verzahnt platzieren
+    const pk = packGround(o, W, ground);
+    if(pk.mode==="lanes"){
+      for(const st of pk.strips){
+        let cx = skyMax(sky, st.y, st.y+st.h);
+        for(const u of st.units){
+          placements.push({ x:cx, y:st.y, w:u.w, h:u.h, color:o.color, order:o, stack:sc() });
+          cx += u.w;
+        }
+        sky = skySet(sky, st.y, st.y+st.h, cx);
+      }
+    } else if(pk.mode==="rows"){
+      let shift = 0;
+      for(const p of pk.block) shift = Math.max(shift, skyMax(sky, p.y, p.y+p.h) - p.x);
+      for(const p of pk.block){
+        const ax = shift + p.x;
+        placements.push({ x:ax, y:p.y, w:p.w, h:p.h, color:o.color, order:o, stack:sc() });
+        sky = skySet(sky, p.y, p.y+p.h, ax + p.w);
+      }
+    }
+  }
+  const usedLength = placements.reduce((m,p)=> Math.max(m, p.x+p.w), 0);
+  return {placements, usedLength};
+}
+// Aufträge GLEICHER Ladereihenfolge dürfen vermischt werden (Spec). Wir probieren mehrere
+// Sortierungen innerhalb jeder Reihenfolge-Gruppe und nehmen das kürzeste Ergebnis.
+function orderByGroups(active, cmp, truck){
+  const groups = new Map();
+  for(const o of active){ if(!groups.has(o.reihenfolge)) groups.set(o.reihenfolge, []); groups.get(o.reihenfolge).push(o); }
+  const out = [];
+  for(const k of [...groups.keys()].sort((a,b)=>a-b)){
+    const g = groups.get(k).slice();
+    if(cmp) g.sort(cmp);
+    out.push(...g);
+  }
+  return out;
+}
+function computeLayout(){
+  const truck = TRUCKS[currentTruck];
+  const L = truck.l;
+  const active = orders.filter(o => o.aktiv && o.anzahl>0);
+  active.sort((a,b)=> (a.reihenfolge-b.reihenfolge) || (a.id-b.id));
+
+  const gnd = o => isStackable(o,truck) ? Math.ceil(o.anzahl/2) : o.anzahl;
+  // Kandidaten-Sortierungen (je Reihenfolge-Gruppe); Original (nach id) ist immer dabei -> nie schlechter
+  const cmps = [
+    null,                                                  // Original (id)
+    (a,b)=> gnd(b)*b.laenge*b.breite - gnd(a)*a.laenge*a.breite, // größte Fläche zuerst
+    (a,b)=> gnd(b) - gnd(a),                               // meiste Stellplätze zuerst
+    (a,b)=> Math.max(b.laenge,b.breite) - Math.max(a.laenge,a.breite), // längste Palette zuerst
+    (a,b)=> b.breite - a.breite,                           // breiteste zuerst
+  ];
+  let best = null;
+  for(const cmp of cmps){
+    const r = layoutSequence(orderByGroups(active, cmp, truck), truck);
+    if(!best || r.usedLength < best.usedLength - 0.01) best = r;
+  }
+  const placements = best ? best.placements : [];
+  const usedLength = best ? best.usedLength : 0;
+  placements.forEach(p => p.overflow = (p.x + p.w) > L + 0.01);
+  const fits = usedLength <= L + 0.01;
+  return {placements, usedLength, fits, truck};
+}
+
+/* ============================ Rendering: LKW-Grafik ============================ */
+let hoverLayout = null;                       // aktuelles Layout für Hover-Maße
+const HOVER_PAD = 120;
+function renderTruck(layout){
+  hoverLayout = layout;
+  const {truck, placements, usedLength} = layout;
+  const L = truck.l, W = truck.w;
+  const pad = HOVER_PAD;                     // mm Rand im viewBox
+  const svg = document.getElementById("truckSvg");
+  const vbW = L + pad*2, vbH = W + pad*2 + 320; // Platz unten für Maßband
+  svg.setAttribute("viewBox", `0 0 ${vbW} ${vbH}`);
+  let s = "";
+
+  // LKW-Umriss
+  s += `<rect x="${pad}" y="${pad}" width="${L}" height="${W}" rx="40" fill="#0e151d" stroke="#3a4756" stroke-width="14"/>`;
+  // Front-Markierung (vorne = links)
+  s += `<rect x="${pad}" y="${pad}" width="60" height="${W}" fill="#5b6b7d" opacity=".25"/>`;
+  s += `<text x="${pad+90}" y="${pad+W/2}" font-size="190" fill="#7b8a9c" dominant-baseline="middle" transform="rotate(-90 ${pad+90} ${pad+W/2})" text-anchor="middle">VORNE</text>`;
+
+  // Paletten (jede in <g data-oid> -> Klick hebt Auftragszeile hervor)
+  for(const p of placements){
+    const x = pad + p.x, y = pad + p.y;
+    const stroke = p.overflow ? "#f04444" : "rgba(0,0,0,.45)";
+    const dash = p.overflow ? `stroke-dasharray="80 60"` : "";
+    const cx = x + p.w/2, cy = y + p.h/2;
+    const label = (p.order.auftragsnummer || "#"+p.order.id);
+    s += `<g class="pal" data-oid="${p.order.id}" style="cursor:pointer">`;
+    s += `<rect x="${x+12}" y="${y+12}" width="${p.w-24}" height="${p.h-24}" rx="22" fill="${p.color}" fill-opacity="${p.overflow?.5:.92}" stroke="${stroke}" stroke-width="12" ${dash}/>`;
+    s += `<text class="pal-label" x="${cx}" y="${cy}" font-size="170" text-anchor="middle" dominant-baseline="central">${esc(label)}</text>`;
+    if(p.stack===2){
+      s += `<text x="${x+p.w-70}" y="${y+150}" font-size="150" text-anchor="end" fill="#11203a" font-weight="800">2×</text>`;
+    }
+    s += `</g>`;
+  }
+
+  // genutzte Länge Markierung
+  if(usedLength>0 && usedLength<=L){
+    const ux = pad + usedLength;
+    s += `<line x1="${ux}" y1="${pad-30}" x2="${ux}" y2="${pad+W+30}" stroke="#34d399" stroke-width="14" stroke-dasharray="50 40"/>`;
+  }
+
+  // Maßband (Meter) unten
+  const by = pad + W + 120;
+  s += `<line x1="${pad}" y1="${by}" x2="${pad+L}" y2="${by}" stroke="#3a4756" stroke-width="8"/>`;
+  for(let m=0; m<=Math.floor(L/1000); m++){
+    const mx = pad + m*1000;
+    s += `<line x1="${mx}" y1="${by-20}" x2="${mx}" y2="${by+20}" stroke="#5b6b7d" stroke-width="8"/>`;
+    s += `<text x="${mx}" y="${by+160}" font-size="150" fill="#7b8a9c" text-anchor="middle">${m}m</text>`;
+  }
+  s += `<g id="hoverGuide" style="pointer-events:none"></g>`;   // Hover-Maße (Lücken)
+  svg.innerHTML = s;
+}
+
+/* ============================ Rendering: Totals + Info ============================ */
+function renderTotals(layout){
+  const L = layout.truck.l/1000;
+  const used = Math.ceil(layout.usedLength/100)/10;
+  const free = Math.max(0, Math.round((L-used)*10)/10);
+  const el = document.getElementById("totals");
+  el.innerHTML =
+    `<span>Genutzte Lademeter: <b class="${layout.fits?'':'bad'}">${used.toFixed(1)} m</b></span>` +
+    `<span>Frei: <b>${free.toFixed(1)} m</b></span>` +
+    `<span>Gesamtlänge LKW: <b>${L.toFixed(2)} m</b></span>`;
+}
+function renderInfo(layout){
+  const truck = layout.truck;
+  const active = orders.filter(o=>o.aktiv && o.anzahl>0);
+  const totalPal = active.reduce((s,o)=> s + o.anzahl, 0);
+  const over = layout.placements.filter(p=>p.overflow).reduce((s,p)=> s + (p.stack||1), 0);
+  const loaded = totalPal - over;
+  const countTxt = over>0 ? `${loaded} von ${totalPal} Paletten geladen` : `${totalPal} Paletten`;
+  document.getElementById("infoHead").innerHTML =
+    `<span>Ladeinfo</span>` + (active.length ? `<span class="infocount ${over>0?"bad":""}">${countTxt}</span>` : "");
+  const body = document.getElementById("infoBody");
+  if(active.length===0){ body.innerHTML = `<div class="empty" style="grid-column:auto">Keine aktiven Aufträge.</div>`; }
+  else{
+    body.innerHTML = active.map(o=>{
+      const lm = orderLademeter(o,truck).toFixed(1);
+      return `<div class="inforow"><span class="infodot" style="background:${o.color}"></span>`+
+        `<span class="infotxt"><b>${esc(o.auftragsnummer||"#"+o.id)}</b> · ${esc(o.kunde||"—")}<br>`+
+        `<small>${o.anzahl} Pal · ${lm} Lademeter</small></span></div>`;
+    }).join("");
+  }
+  const msg = document.getElementById("fitMsg");
+  if(active.length===0){ msg.className="fit-ok"; msg.textContent="–"; }
+  else if(layout.fits){ msg.className="fit-ok"; msg.textContent="✓ Ladung passt auf den LKW"; }
+  else{
+    const over = layout.placements.filter(p=>p.overflow).reduce((s,p)=>s+(p.stack||1), 0);
+    msg.className="fit-bad";
+    msg.textContent = `✗ Ladung passt NICHT — ${over} Palette${over===1?" übersteht":"n überstehen"}!`;
+  }
+}
+
+/* ============================ Rendering: Auftragsliste ============================ */
+const SORT_COLS = [
+  {key:"auftragsnummer", label:"Auftragsnr.", cls:"w-num"},
+  {key:"kunde",          label:"Kunde",       cls:"w-kunde"},
+  {key:"lieferdatum",    label:"Lieferdatum", cls:"w-datum", date:true},
+  {key:"destCode",       label:"Dest",        cls:"w-dest"},
+  {key:"anzahl",         label:"Pal.",        cls:"w-pal", num:true},
+  {key:"laenge",         label:"Länge",       cls:"w-mm",  num:true},
+  {key:"breite",         label:"Breite",      cls:"w-mm",  num:true},
+  {key:"hoehe",          label:"Höhe",        cls:"w-mm",  num:true},
+  {key:"ladeart",        label:"Ladeart",     cls:"w-art"},
+  {key:"reihenfolge",    label:"Reihenfolge", cls:""},
+  {key:"stapelbar",      label:"Stapelbar",   cls:"", bool:true},
+  {key:"aktiv",          label:"Aktiv",       cls:"", bool:true},
+];
+let sortState = {key:null, dir:1};
+function dateVal(s){ const m=/^(\d{2})\.(\d{2})\.(\d{2})$/.exec(String(s||"").trim()); return m ? (+m[3])*10000+(+m[2])*100+(+m[1]) : -1; }
+function sortOrders(key){
+  const col = SORT_COLS.find(c=>c.key===key); if(!col) return;
+  if(sortState.key===key) sortState.dir *= -1; else { sortState.key=key; sortState.dir=1; }
+  const dir = sortState.dir;
+  orders.sort((a,b)=>{
+    if(col.bool) return ((a[key]?1:0)-(b[key]?1:0))*dir;
+    if(col.num)  return ((+a[key]||0)-(+b[key]||0))*dir;
+    if(col.date) return (dateVal(a[key])-dateVal(b[key]))*dir;
+    return String(a[key]??"").localeCompare(String(b[key]??""), "de", {numeric:true})*dir;
+  });
+  renderList();
+}
+
+function renderList(){
+  const truck = TRUCKS[currentTruck];
+  const list = document.getElementById("list");
+  if(orders.length===0){
+    list.innerHTML = `<div class="empty">Noch keine Aufträge. „Neuer Auftrag“ oder „Aus Zwischenablage“.</div>`;
+    return;
+  }
+  const head = `<div id="listHead"><span class="swatch" style="visibility:hidden"></span>` +
+    SORT_COLS.map(c=>{
+      const arrow = sortState.key===c.key ? `<span class="sortarrow">${sortState.dir>0?"▲":"▼"}</span>` : "";
+      return `<span class="${c.cls}" data-sort="${c.key}">${c.label}${arrow}</span>`;
+    }).join("") + `</div>`;
+  list.innerHTML = head + orders.map(o=>{
+    const stackPossible = 2*o.hoehe <= truck.h;
+    const lm = orderLademeter(o,truck).toFixed(1);
+    return `<div class="order ${o.aktiv?'':'inactive'}" style="--c:${o.color}" data-id="${o.id}">
+      <span class="swatch"></span>
+      <div class="fld w-num"><label>Auftragsnr.</label><input class="txt" data-f="auftragsnummer" value="${esc(o.auftragsnummer)}"></div>
+      <div class="fld w-kunde"><label>Kunde</label><input class="txt" data-f="kunde" value="${esc(o.kunde)}"></div>
+      <div class="fld w-datum"><label>Lieferdatum</label><input class="txt" data-f="lieferdatum" value="${esc(o.lieferdatum)}"></div>
+      <div class="fld w-dest"><label>Dest</label><input class="txt" data-f="destCode" value="${esc(o.destCode)}"></div>
+      <div class="fld w-pal"><label>Pal.</label><input class="txt num" data-f="anzahl" value="${o.anzahl}"></div>
+      <div class="fld w-mm"><label>Länge mm</label><input class="txt num" data-f="laenge" value="${o.laenge}"></div>
+      <div class="fld w-mm"><label>Breite mm</label><input class="txt num" data-f="breite" value="${o.breite}"></div>
+      <div class="fld w-mm"><label>Höhe mm</label><input class="txt num" data-f="hoehe" value="${o.hoehe}"></div>
+      <div class="fld w-art"><label>Ladeart</label>
+        <select data-f="ladeart">
+          <option value="optimiert" ${o.ladeart==="optimiert"?"selected":""}>Optimiert</option>
+          <option value="lang" ${o.ladeart==="lang"?"selected":""}>Alle Lang laden</option>
+          <option value="breit" ${o.ladeart==="breit"?"selected":""}>Alle Breit laden</option>
+        </select>
+      </div>
+      <div class="fld"><label>Reihenfolge</label>
+        <div class="numbox">
+          <button data-act="dec">−</button><div class="sep"></div>
+          <input data-f="reihenfolge" value="${o.reihenfolge}">
+          <div class="sep"></div><button data-act="inc">+</button>
+        </div>
+      </div>
+      <label class="chk ${stackPossible?'':'disabled'}">
+        <input type="checkbox" data-f="stapelbar" ${o.stapelbar?"checked":""} ${stackPossible?"":"disabled"}> Stapelbar
+      </label>
+      <label class="chk">
+        <input type="checkbox" data-f="aktiv" ${o.aktiv?"checked":""}> Aktiv
+      </label>
+      <span class="lmeter">${lm} Lademeter</span>
+      <button class="icon del ghostdanger" data-act="del" title="Auftrag löschen">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M6 6l1 14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-14M10 11v6M14 11v6"/></svg>
+      </button>
+    </div>`;
+  }).join("");
+}
+
+/* ============================ Recalc / Render-Zyklus ============================ */
+function recalc(){
+  // Stapelbar erzwingen wenn LKW zu niedrig
+  const truck = TRUCKS[currentTruck];
+  orders.forEach(o=>{ if(2*o.hoehe > truck.h) o.stapelbar = false; });
+  const layout = computeLayout();
+  renderTruck(layout);
+  renderTotals(layout);
+  renderInfo(layout);
+  // Lademeter + Stapelbar-Status je Zeile aktualisieren (ohne die Liste neu zu rendern)
+  document.querySelectorAll("#list .order").forEach(card=>{
+    const o = orders.find(x=>x.id==card.dataset.id); if(!o) return;
+    const lm = card.querySelector(".lmeter");
+    if(lm) lm.textContent = orderLademeter(o,truck).toFixed(1) + " Lademeter";
+    const chk = card.querySelector('input[data-f="stapelbar"]');
+    if(chk){
+      const possible = 2*o.hoehe <= truck.h;
+      chk.disabled = !possible; chk.checked = o.stapelbar;
+      chk.closest(".chk").classList.toggle("disabled", !possible);
+    }
+  });
+}
+function renderAll(){ renderList(); recalc(); }
+
+/* ============================ Events ============================ */
+function esc(s){ return String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+// LKW-Auswahl
+const truckSel = document.getElementById("truckSel");
+function rebuildTruckSelect(){
+  truckSel.innerHTML = "";
+  for(const name of Object.keys(TRUCKS)){
+    const o = document.createElement("option"); o.value = name; o.textContent = name; truckSel.appendChild(o);
+  }
+  if(!TRUCKS[currentTruck]) currentTruck = Object.keys(TRUCKS)[0] || "Plane";
+  truckSel.value = currentTruck;
+}
+rebuildTruckSelect();
+truckSel.addEventListener("change", e=>{ record(); currentTruck = e.target.value; renderAll(); });
+
+/* ---------- Einstellungen (LKW-Typen + Anzeige) ---------- */
+const settingsModal = document.getElementById("settingsModal");
+const truckTable = document.getElementById("truckTable");
+const mm2m = mm => (mm/1000).toString().replace(".", ",");
+const m2mm = v => Math.round((parseFloat(String(v).replace(",","."))||0) * 1000);
+function renderTruckTable(){
+  truckTable.innerHTML = Object.keys(TRUCKS).map(name=>{
+    const t = TRUCKS[name];
+    return `<div class="trow" data-name="${esc(name)}">
+      <input class="txt tname" data-k="name" value="${esc(name)}">
+      <input class="txt tdim" data-k="l" value="${mm2m(t.l)}" inputmode="decimal">
+      <input class="txt tdim" data-k="w" value="${mm2m(t.w)}" inputmode="decimal">
+      <input class="txt tdim" data-k="h" value="${mm2m(t.h)}" inputmode="decimal">
+      <button class="icon ghostdanger" data-deltruck="${esc(name)}" title="Typ löschen">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M6 6l1 14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-14"/></svg>
+      </button>
+    </div>`;
+  }).join("");
+}
+// liest alle Tabellenzeilen, baut TRUCKS neu (Reihenfolge bleibt), speichert & aktualisiert
+function applyTruckTable(){
+  const next = {};
+  truckTable.querySelectorAll(".trow").forEach(row=>{
+    const name = row.querySelector('[data-k="name"]').value.trim();
+    if(!name) return;
+    const l = m2mm(row.querySelector('[data-k="l"]').value);
+    const w = m2mm(row.querySelector('[data-k="w"]').value);
+    const h = m2mm(row.querySelector('[data-k="h"]').value);
+    if(l>0 && w>0 && h>0 && !next[name]) next[name] = {l, w, h};
+  });
+  if(Object.keys(next).length===0) return;   // mind. ein gültiger Typ muss bleiben
+  TRUCKS = next;
+  if(!TRUCKS[currentTruck]) currentTruck = Object.keys(TRUCKS)[0];
+  saveTrucks(); rebuildTruckSelect(); recalc();
+}
+truckTable.addEventListener("change", applyTruckTable);
+truckTable.addEventListener("click", e=>{
+  const b = e.target.closest("[data-deltruck]"); if(!b) return;
+  if(Object.keys(TRUCKS).length<=1){ notify("warn","Mindestens ein LKW-Typ muss bleiben."); return; }
+  delete TRUCKS[b.dataset.deltruck];
+  if(!TRUCKS[currentTruck]) currentTruck = Object.keys(TRUCKS)[0];
+  saveTrucks(); rebuildTruckSelect(); renderTruckTable(); recalc();
+});
+document.getElementById("ntAdd").addEventListener("click", ()=>{
+  const name = document.getElementById("ntName").value.trim();
+  const l = m2mm(document.getElementById("ntL").value);
+  const w = m2mm(document.getElementById("ntW").value);
+  const h = m2mm(document.getElementById("ntH").value);
+  if(!name){ notify("warn","Name fehlt."); return; }
+  if(TRUCKS[name]){ notify("warn","Name existiert bereits."); return; }
+  if(!(l>0 && w>0 && h>0)){ notify("warn","Länge, Breite, Höhe (in m) angeben."); return; }
+  TRUCKS[name] = {l, w, h};
+  saveTrucks(); rebuildTruckSelect(); renderTruckTable(); recalc();
+  ["ntName","ntL","ntW","ntH"].forEach(id=> document.getElementById(id).value="");
+  document.getElementById("ntName").focus();
+});
+document.getElementById("setResetTrucks").addEventListener("click", ()=>{
+  TRUCKS = cloneDefaults();
+  if(!TRUCKS[currentTruck]) currentTruck = Object.keys(TRUCKS)[0];
+  saveTrucks(); rebuildTruckSelect(); renderTruckTable(); recalc();
+});
+const setCrosshair = document.getElementById("setCrosshair");
+setCrosshair.addEventListener("change", ()=>{
+  settings.showCrosshair = setCrosshair.checked; saveSettings();
+  if(!settings.showCrosshair) clearHoverGuide();
+});
+function openSettings(){
+  renderTruckTable();
+  setCrosshair.checked = settings.showCrosshair;
+  settingsModal.classList.add("open");
+}
+document.getElementById("btnSettings").addEventListener("click", openSettings);
+document.getElementById("settingsClose").addEventListener("click", ()=> settingsModal.classList.remove("open"));
+settingsModal.addEventListener("click", e=>{ if(e.target===settingsModal) settingsModal.classList.remove("open"); });
+
+// Hover über eine freie Lücke -> zwei Maß-Achsen (Länge × Breite der Lücke) einblenden
+const truckSvgEl = document.getElementById("truckSvg");
+function clearHoverGuide(){ const g = document.getElementById("hoverGuide"); if(g) g.innerHTML = ""; }
+truckSvgEl.addEventListener("mouseleave", clearHoverGuide);
+truckSvgEl.addEventListener("mousemove", e=>{
+  if(!settings.showCrosshair) return;
+  const g = document.getElementById("hoverGuide"); if(!g || !hoverLayout) return;
+  const ctm = truckSvgEl.getScreenCTM(); if(!ctm) return;
+  const pt = truckSvgEl.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
+  const loc = pt.matrixTransform(ctm.inverse());
+  const pad = HOVER_PAD, { truck, placements } = hoverLayout, L = truck.l, W = truck.w;
+  const tx = loc.x - pad, ty = loc.y - pad;
+  if(tx < 0 || tx > L || ty < 0 || ty > W){ g.innerHTML = ""; return; }
+  // im Inneren einer Palette? -> keine Lücke
+  for(const p of placements)
+    if(tx >= p.x-0.01 && tx <= p.x+p.w+0.01 && ty >= p.y-0.01 && ty <= p.y+p.h+0.01){ g.innerHTML = ""; return; }
+  // freie Spanne in X (bei Höhe ty) und in Y (bei Länge tx)
+  let x0 = 0, x1 = L, y0 = 0, y1 = W;
+  for(const p of placements){
+    if(ty > p.y-0.01 && ty < p.y+p.h+0.01){
+      if(p.x+p.w <= tx+0.01) x0 = Math.max(x0, p.x+p.w);
+      else if(p.x >= tx-0.01) x1 = Math.min(x1, p.x);
+    }
+    if(tx > p.x-0.01 && tx < p.x+p.w+0.01){
+      if(p.y+p.h <= ty+0.01) y0 = Math.max(y0, p.y+p.h);
+      else if(p.y >= ty-0.01) y1 = Math.min(y1, p.y);
+    }
+  }
+  const fmt = mm => (mm/1000).toFixed(2) + " m";
+  const C = "#fbbf24", DK = "#0e1318";
+  const px0=pad+x0, px1=pad+x1, py0=pad+y0, py1=pad+y1, ptx=pad+tx, pty=pad+ty;
+  let h = "";
+  // X-Achse (Länge der Lücke)
+  h += `<line x1="${px0}" y1="${pty}" x2="${px1}" y2="${pty}" stroke="${C}" stroke-width="9"/>`;
+  h += `<line x1="${px0}" y1="${pty-55}" x2="${px0}" y2="${pty+55}" stroke="${C}" stroke-width="9"/>`;
+  h += `<line x1="${px1}" y1="${pty-55}" x2="${px1}" y2="${pty+55}" stroke="${C}" stroke-width="9"/>`;
+  h += `<text x="${(px0+px1)/2}" y="${pty-75}" font-size="150" fill="${C}" text-anchor="middle" font-weight="800" paint-order="stroke" stroke="${DK}" stroke-width="45">${fmt(x1-x0)}</text>`;
+  // Y-Achse (Breite der Lücke)
+  h += `<line x1="${ptx}" y1="${py0}" x2="${ptx}" y2="${py1}" stroke="${C}" stroke-width="9"/>`;
+  h += `<line x1="${ptx-55}" y1="${py0}" x2="${ptx+55}" y2="${py0}" stroke="${C}" stroke-width="9"/>`;
+  h += `<line x1="${ptx-55}" y1="${py1}" x2="${ptx+55}" y2="${py1}" stroke="${C}" stroke-width="9"/>`;
+  h += `<text x="${ptx+75}" y="${(py0+py1)/2}" font-size="150" fill="${C}" text-anchor="start" dominant-baseline="central" font-weight="800" paint-order="stroke" stroke="${DK}" stroke-width="45">${fmt(y1-y0)}</text>`;
+  g.innerHTML = h;
+});
+
+// Klick auf Palette -> zugehörige Auftragszeile hinscrollen + aufblitzen
+document.getElementById("truckSvg").addEventListener("click", e=>{
+  const g = e.target.closest("[data-oid]"); if(!g) return;
+  const row = document.querySelector(`.order[data-id="${g.dataset.oid}"]`);
+  if(!row) return;
+  row.scrollIntoView({behavior:"smooth", block:"center"});
+  row.classList.remove("flash");
+  void row.offsetWidth;          // Reflow erzwingen, damit die Animation neu startet
+  row.classList.add("flash");
+  setTimeout(()=> row.classList.remove("flash"), 1200);
+});
+
+// Toolbar
+document.getElementById("btnAdd").addEventListener("click", ()=>{
+  record();
+  const o = makeOrder({laenge:1200, breite:800, hoehe:1200, anzahl:1, reihenfolge:1});
+  orders.push(o);
+  renderAll();
+  // zum neuen Auftrag scrollen und Auftragsnummer fokussieren
+  const row = document.querySelector(`.order[data-id="${o.id}"]`);
+  if(row){
+    row.scrollIntoView({behavior:"smooth", block:"nearest"});
+    const inp = row.querySelector('input[data-f="auftragsnummer"]');
+    if(inp){ inp.focus(); inp.select(); }
+  }
+});
+document.getElementById("btnRefresh").addEventListener("click", renderAll);
+document.getElementById("btnUndo").addEventListener("click", undo);
+
+// Alle Aufträge auf inaktiv setzen
+document.getElementById("btnDeselect").addEventListener("click", ()=>{
+  if(!orders.some(o=>o.aktiv)) return;
+  record();
+  orders.forEach(o=> o.aktiv = false);
+  renderAll();
+});
+
+// Export als JSON
+const nameModal = document.getElementById("nameModal");
+const nameInput = document.getElementById("nameInput");
+const pad2 = n => String(n).padStart(2,"0");
+function defaultExportName(){
+  const d = new Date();
+  return `LKW-Ladung ${pad2(d.getDate())}.${pad2(d.getMonth()+1)}.${d.getFullYear()} ${pad2(d.getHours())}-${pad2(d.getMinutes())}`;
+}
+function doExport(name){
+  const data = { app:"lkw-planer", version:1, truck:currentTruck,
+    orders: orders.map(o=>({ auftragsnummer:o.auftragsnummer, kunde:o.kunde, lieferdatum:o.lieferdatum,
+      destCode:o.destCode, anzahl:o.anzahl, laenge:o.laenge, breite:o.breite, hoehe:o.hoehe,
+      ladeart:o.ladeart, reihenfolge:o.reihenfolge, stapelbar:o.stapelbar, aktiv:o.aktiv, color:o.color })) };
+  let fname = (name||"").trim().replace(/[\\/:*?"<>|]/g,"-") || defaultExportName();
+  if(!/\.json$/i.test(fname)) fname += ".json";
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type:"application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = fname;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  notify("ok", `<b>${orders.length}</b> Auftrag${orders.length===1?"":"e"} exportiert.`, fname, 4000);
+}
+document.getElementById("btnExport").addEventListener("click", ()=>{
+  if(orders.length===0){ notify("warn","Keine Aufträge zum Exportieren."); return; }
+  nameInput.value = defaultExportName();
+  nameModal.classList.add("open");
+  nameInput.focus(); nameInput.select();
+});
+document.getElementById("nameCancel").addEventListener("click", ()=> nameModal.classList.remove("open"));
+document.getElementById("nameOk").addEventListener("click", ()=>{ doExport(nameInput.value); nameModal.classList.remove("open"); });
+nameModal.addEventListener("click", e=>{ if(e.target===nameModal) nameModal.classList.remove("open"); });
+nameInput.addEventListener("keydown", e=>{
+  if(e.key==="Enter"){ e.preventDefault(); doExport(nameInput.value); nameModal.classList.remove("open"); }
+  else if(e.key==="Escape"){ nameModal.classList.remove("open"); }
+});
+
+// Import aus JSON
+const fileImport = document.getElementById("fileImport");
+document.getElementById("btnImport").addEventListener("click", ()=> fileImport.click());
+fileImport.addEventListener("change", e=>{
+  const file = e.target.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    try{
+      const data = JSON.parse(reader.result);
+      const list = Array.isArray(data) ? data : data.orders;
+      if(!Array.isArray(list)) throw new Error("Kein Auftrags-Array gefunden.");
+      record();
+      orders = list.map(d => makeOrder({
+        auftragsnummer:d.auftragsnummer||"", kunde:d.kunde||"", lieferdatum:d.lieferdatum||"",
+        destCode:d.destCode||"", anzahl:+d.anzahl||1,
+        laenge:+d.laenge||1200, breite:+d.breite||800, hoehe:+d.hoehe||1200,
+        ladeart:["optimiert","lang","breit"].includes(d.ladeart)?d.ladeart:"optimiert",
+        reihenfolge:Math.max(1,Math.min(99,+d.reihenfolge||1)),
+        stapelbar:!!d.stapelbar, aktiv:!!d.aktiv,
+        ...(d.color ? {color:d.color} : {}),
+      }));
+      if(data.truck && TRUCKS[data.truck]){ currentTruck = data.truck; truckSel.value = currentTruck; }
+      renderAll();
+      notify("ok", `<b>${orders.length}</b> Auftrag${orders.length===1?"":"e"} importiert.`, "", 4000);
+    }catch(err){
+      notify("warn", "Import fehlgeschlagen.", String(err.message||err), 6000);
+    }
+  };
+  reader.readAsText(file);
+  fileImport.value = "";   // gleiche Datei erneut wählbar
+});
+// Reset: Zwei-Klick-Bestätigung direkt am Button (kein natives confirm)
+const btnReset = document.getElementById("btnReset");
+const resetLabel = document.getElementById("resetLabel");
+let resetArmed = false, resetTimer = null;
+function disarmReset(){
+  resetArmed = false; clearTimeout(resetTimer);
+  btnReset.classList.remove("armed"); resetLabel.textContent = "Alle löschen / Reset";
+}
+btnReset.addEventListener("click", ()=>{
+  if(orders.length===0){ disarmReset(); return; }   // nichts zu löschen
+  if(!resetArmed){
+    resetArmed = true;
+    btnReset.classList.add("armed");
+    resetLabel.textContent = "Sicher? Nochmal klicken";
+    resetTimer = setTimeout(disarmReset, 4000);       // automatisch zurücksetzen
+    return;
+  }
+  disarmReset();
+  record();
+  orders = []; colorIdx = 0; renderAll();
+});
+// Klick woanders entschärft den Reset wieder
+document.addEventListener("click", e=>{ if(resetArmed && !btnReset.contains(e.target)) disarmReset(); });
+
+// Liste: Eingaben (event delegation)
+const list = document.getElementById("list");
+let editRecorded = false;   // wurde diese Textfeld-Bearbeitung schon in der History gesichert?
+list.addEventListener("input", e=>{
+  const card = e.target.closest(".order"); if(!card) return;
+  const o = orders.find(x=>x.id==card.dataset.id); if(!o) return;
+  const f = e.target.dataset.f; if(!f) return;
+  if(!editRecorded){ record(); editRecorded = true; }   // 1 Undo-Schritt pro Bearbeitung
+  if(e.target.classList.contains("num") || f==="reihenfolge"){
+    handleNumInput(e.target, o, f);
+  } else {
+    o[f] = e.target.value;
+  }
+  if(["laenge","breite","hoehe","anzahl","ladeart","reihenfolge"].includes(f)) recalc();
+});
+list.addEventListener("change", e=>{
+  const card = e.target.closest(".order"); if(!card) return;
+  const o = orders.find(x=>x.id==card.dataset.id); if(!o) return;
+  const f = e.target.dataset.f;
+  if(f==="stapelbar"){ record(); o.stapelbar = e.target.checked; recalc(); }
+  else if(f==="aktiv"){ record(); o.aktiv = e.target.checked; card.classList.toggle("inactive",!o.aktiv); recalc(); }
+  else if(f==="ladeart"){ record(); o.ladeart = e.target.value; renderList(); recalc(); }
+});
+list.addEventListener("click", e=>{
+  const btn = e.target.closest("button[data-act]"); if(!btn) return;
+  const card = e.target.closest(".order"); const o = orders.find(x=>x.id==card.dataset.id); if(!o) return;
+  const act = btn.dataset.act;
+  if(act==="del"){ record(); orders = orders.filter(x=>x.id!==o.id); renderAll(); }
+  else if(act==="inc"){ record(); o.reihenfolge = Math.min(99,(+o.reihenfolge||0)+1); renderList(); recalc(); }
+  else if(act==="dec"){ record(); o.reihenfolge = Math.max(1,(+o.reihenfolge||1)-1); renderList(); recalc(); }
+});
+// Sortierbare Spaltenköpfe
+list.addEventListener("click", e=>{
+  const h = e.target.closest("[data-sort]"); if(!h) return;
+  sortOrders(h.dataset.sort);
+});
+// Paletten eines Auftrags in der Grafik aufblitzen lassen
+function flashPallets(oid){
+  document.querySelectorAll(`#truckSvg g.pal[data-oid="${oid}"]`).forEach(g=>{
+    g.classList.remove("palflash");
+    void g.getBoundingClientRect();   // Reflow -> Animation startet neu
+    g.classList.add("palflash");
+    setTimeout(()=> g.classList.remove("palflash"), 950);
+  });
+}
+// Auslöser mit Dedupe (verhindert Doppel-Blitz aus Klick + Fokus derselben Interaktion)
+let lastFlashOid = null, lastFlashT = 0;
+function triggerFlash(oid){
+  const now = performance.now();
+  if(oid === lastFlashOid && now - lastFlashT < 150) return;
+  lastFlashOid = oid; lastFlashT = now;
+  flashPallets(oid);
+}
+// Tab -> Inhalt markieren; Fokus in eine Zeile -> deren Paletten aufblitzen
+list.addEventListener("focusin", e=>{
+  if(e.target.tagName==="INPUT" && e.target.type!=="checkbox"){ editRecorded = false; e.target.select(); }
+  const card = e.target.closest(".order"); if(card) triggerFlash(card.dataset.id);
+});
+// Klick irgendwo in die Zeile (außer Buttons/Header) -> Paletten aufblitzen
+list.addEventListener("click", e=>{
+  if(e.target.closest("button[data-act]") || e.target.closest("[data-sort]")) return;
+  const card = e.target.closest(".order"); if(card) triggerFlash(card.dataset.id);
+});
+
+function handleNumInput(input, o, f){
+  if(f==="laenge"||f==="breite"||f==="hoehe"){
+    // nur Ziffern + Komma; Punkt -> Komma
+    let v = input.value.replace(/\./g,",").replace(/[^0-9,]/g,"");
+    const parts = v.split(","); if(parts.length>2) v = parts[0]+","+parts.slice(1).join("");
+    input.value = v;
+    o[f] = parseFloat(v.replace(",","."))||0;
+  } else if(f==="anzahl"){
+    let v = input.value.replace(/[^0-9]/g,""); input.value=v;
+    o.anzahl = parseInt(v,10)||0;
+  } else if(f==="reihenfolge"){
+    let v = input.value.replace(/[^0-9]/g,"");
+    let n = parseInt(v,10); if(!Number.isFinite(n)) n=1; n=Math.max(1,Math.min(99,n));
+    input.value = v===""?"":n; o.reihenfolge = n;
+  }
+}
+
+/* ---- Zwischenablage ---- */
+const modal = document.getElementById("modal");
+const pasteArea = document.getElementById("pasteArea");
+document.getElementById("btnPaste").addEventListener("click", async ()=>{
+  try{
+    const txt = await navigator.clipboard.readText();
+    if(txt && txt.trim()){ importText(txt); return; }
+  }catch(_){ /* Berechtigung verweigert -> Fallback-Dialog */ }
+  pasteArea.value=""; modal.classList.add("open"); pasteArea.focus();
+});
+document.getElementById("pasteCancel").addEventListener("click", ()=>modal.classList.remove("open"));
+document.getElementById("pasteOk").addEventListener("click", ()=>{ importText(pasteArea.value); modal.classList.remove("open"); });
+modal.addEventListener("click", e=>{ if(e.target===modal) modal.classList.remove("open"); });
+
+function importText(txt){
+  const {orders:parsed, skipped} = parseClipboard(txt);
+  if(parsed.length===0 && skipped.length===0){
+    notify("warn", "Keine gültigen Auftragszeilen erkannt.");
+    return;
+  }
+  // Duplikate nach Auftragsnummer aussortieren (bereits vorhandene + innerhalb des Imports)
+  const seen = new Set(orders.map(o => o.auftragsnummer).filter(Boolean));
+  const toAdd = [], duplicates = [];
+  for(const o of parsed){
+    const nr = o.auftragsnummer;
+    if(nr && seen.has(nr)){ duplicates.push(nr); }
+    else { if(nr) seen.add(nr); toAdd.push(o); }
+  }
+  if(toAdd.length){
+    const truck = TRUCKS[currentTruck];
+    toAdd.forEach(o=>{ o.stapelbar = (2*o.hoehe <= truck.h); }); // Default Stapelbar
+    record();
+    orders.push(...toAdd);
+    renderAll();
+  }
+  // Hinweise zusammenstellen
+  const parts = [];
+  if(duplicates.length) parts.push(`<b>${duplicates.length}</b> Duplikat${duplicates.length===1?"":"e"} übersprungen`);
+  if(skipped.length)    parts.push(`<b>${skipped.length}</b> unvollständige Zeile${skipped.length===1?"":"n"} ignoriert`);
+  const title = `<b>${toAdd.length}</b> Auftrag${toAdd.length===1?"":"e"} importiert`+
+                (parts.length ? " — " + parts.join(", ") : "") + ".";
+  let detail = "";
+  if(duplicates.length) detail += "Duplikate: " + duplicates.slice(0,8).join(", ") + (duplicates.length>8?" …":"") + "\n";
+  if(skipped.length){
+    detail += skipped.slice(0,5).map(l => l.length>70 ? l.slice(0,70)+"…" : l).join("\n");
+    if(skipped.length>5) detail += `\n… und ${skipped.length-5} weitere`;
+  }
+  const hasWarn = duplicates.length || skipped.length;
+  notify(hasWarn ? "warn" : "ok", title, detail.trim(), 5000);  // nach 5 s automatisch ausblenden
+}
+
+// Toast-Hinweis: type ok|warn, html-Titel, optional Code-Vorschau, timeoutMs (0 = bleibt bis Schließen)
+function notify(type, titleHtml, detail="", timeoutMs=5000){
+  const box = document.getElementById("toasts");
+  const el = document.createElement("div");
+  el.className = "toast " + type;
+  el.innerHTML = `<div><span>${titleHtml}</span>${detail?`<pre>${esc(detail)}</pre>`:""}</div>`+
+                 `<button class="x" title="Schließen">×</button>`;
+  el.querySelector(".x").addEventListener("click", ()=>el.remove());
+  box.appendChild(el);
+  if(timeoutMs>0) setTimeout(()=>el.remove(), timeoutMs);
+}
+
+// Tastenkürzel Strg+Z (nicht in Textfeldern, dort gilt natives Undo)
+document.addEventListener("keydown", e=>{
+  if((e.ctrlKey||e.metaKey) && !e.shiftKey && e.key.toLowerCase()==="z"){
+    const t = e.target.tagName;
+    if(t==="INPUT" || t==="TEXTAREA") return;   // natives Undo im Feld
+    e.preventDefault(); undo();
+  }
+});
+
+/* ============================ Start ============================ */
+renderAll();
+</script>
+</body>
+</html>
