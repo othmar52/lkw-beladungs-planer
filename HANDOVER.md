@@ -23,7 +23,16 @@ Nur **aktive** Aufträge mit `anzahl>0` kommen in Grafik/Berechnung.
 LKW-Typen: `DEFAULT_TRUCKS` (mm) = Kühler 13300×2400×2600, Plane 13600×2450×2650,
 Motorwagen Wenzel 7200×2450×2500, Motorwagen Tüske 8000×2450×2700. Zur Laufzeit ist `TRUCKS`
 **mutierbar** und wird aus `localStorage` (`lkwPlaner.trucks`) geladen (Fallback = Defaults).
-`settings` (`lkwPlaner.settings`) hält u. a. `showCrosshair`. `loadConfig/saveTrucks/saveSettings`.
+`settings` (`lkwPlaner.settings`) hält `showCrosshair` und `lang` ("de"|"en"). `loadConfig/saveTrucks/saveSettings`.
+
+## Mehrsprachigkeit (DE/EN, Default DE)
+Zentrales `I18N = {de:{…}, en:{…}}`; `t(key, ...args)` liefert den Text der aktuellen `settings.lang`
+(Werte können Strings oder Funktionen für Pluralformen/Parameter sein). Statische Texte tragen
+`data-i18n` (textContent), `data-i18n-title` (title) bzw. `data-i18n-ph` (placeholder); `applyStatic()`
+setzt sie. Dynamische Texte (Render-Funktionen, Toasts, SVG „VORNE", Tooltips) nutzen `t()`.
+Umschalten via `#langSel` in den Einstellungen → `saveSettings()` + `applyStatic()` + `renderAll()`.
+**Beim Hinzufügen neuer UI-Texte: Key in BEIDE Sprachen eintragen** (Node-Check: alle `t()`-/`data-i18n`-Keys
+müssen in `de` und `en` existieren).
 
 ## Import aus Zwischenablage (`parseClipboard` / `parseLine`)
 Festbreiten-Report; Parsing über **Datums-Anker** (`\d{2}\.\d{2}\.\d{2}`):

@@ -21,3 +21,15 @@
 - Echte global-optimale 2D-Packung über alle Aufträge (statt pro Auftrag optimal + Verzahnung)
 - Druck / PDF-Export der Ladeansicht
 - Mehrere LKW (Aufträge auf mehrere Fahrzeuge verteilen)
+
+
+erklärbar hinzufügen
+
+tabindex navigation auf anzahl L B H beschränken?
+
+
+lang laden: darf nicht zu 100% strikt sein. entstandene "löcher" sind nicht vertretbar
+
+
+falls viewport schmäler: textfeld auftragsnummer, kunde, bemerkung schmäler mach
+

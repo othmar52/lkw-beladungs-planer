@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>LKW Planer</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%230e1318'/><rect x='4' y='7' width='24' height='18' rx='2.5' fill='%23171f29' stroke='%233b82f6' stroke-width='1.6'/><rect x='6.5' y='9.5' width='5.5' height='5.5' rx='1' fill='%233b82f6'/><rect x='12.5' y='9.5' width='5.5' height='5.5' rx='1' fill='%2316a34a'/><rect x='6.5' y='15.5' width='5.5' height='5.5' rx='1' fill='%23d97706'/><rect x='12.5' y='15.5' width='5.5' height='5.5' rx='1' fill='%23db2777'/><rect x='19' y='9.5' width='6.5' height='11.5' rx='1' fill='%230891b2'/></svg>">
 <style>
   :root{
     --bg:#0e1318; --panel:#171f29; --panel2:#1d2733; --input:#0f161e;
@@ -20,7 +21,7 @@
     height:100vh;overflow:hidden;font-size:13px;
   }
   /* ---------- obere Hälfte (fix) ---------- */
-  #top{height:50vh;min-height:300px;display:flex;flex-direction:column;
+  #top{flex:none;max-height:52vh;display:flex;flex-direction:column;overflow:hidden;
        border-bottom:2px solid var(--line);background:var(--panel);}
   #toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;
            padding:10px 14px;border-bottom:1px solid var(--line2);}
@@ -44,12 +45,16 @@
   button.icon{padding:7px;width:34px;height:34px;justify-content:center;}
   button.ghostdanger{color:var(--danger);border-color:#5a2e30;}
   button.ghostdanger:hover{background:#2a1a1c;}
+  button.toggled{background:var(--accent);border-color:var(--accent);color:#fff;}
+  button.toggled:hover{background:var(--accent-d);}
+  #totals .hiddeninfo{margin-left:auto;color:var(--accent);font-weight:700;display:inline-flex;align-items:center;gap:5px;
+                      background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.35);border-radius:7px;padding:2px 9px;}
   .spacer{flex:1}
   #stageWrap{flex:1;display:flex;min-height:0;}
-  #stage{flex:1;display:flex;flex-direction:column;min-width:0;padding:10px 14px;}
-  #truckBox{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;overflow:hidden;}
-  #truckSvg{width:100%;height:100%;}
-  #totals{padding:8px 2px 0;color:var(--muted);font-weight:600;display:flex;gap:20px;flex-wrap:wrap;}
+  #stage{flex:1;display:flex;flex-direction:column;min-width:0;padding:5px 14px 0;}
+  #truckBox{display:flex;justify-content:center;overflow:hidden;}
+  #truckSvg{width:100%;height:auto;display:block;max-height:calc(52vh - 120px);}
+  #totals{padding:5px 2px 0;color:var(--muted);font-weight:600;display:flex;gap:20px;flex-wrap:wrap;}
   #totals b{color:var(--text)}
   #totals .bad{color:var(--danger)}
   #infoPanel{width:320px;border-left:1px solid var(--line2);display:flex;flex-direction:column;min-height:0;}
@@ -93,7 +98,8 @@
     border-left-color:color-mix(in srgb, var(--c,#888) 55%, #fff);
     box-shadow:0 0 0 1.5px color-mix(in srgb, var(--c,#888) 40%, transparent), var(--shadow);
   }
-  .swatch{width:14px;height:14px;border-radius:4px;background:var(--c,#888);border:1px solid rgba(255,255,255,.25);flex:none;align-self:center;}
+  .swatch{width:14px;height:14px;border-radius:4px;background:var(--c,#888);border:1px solid rgba(255,255,255,.25);flex:none;align-self:center;cursor:pointer;}
+  .order .swatch:hover{outline:2px solid #fff;outline-offset:1px;}
   .fld{display:flex;flex-direction:column;gap:2px;flex:none;}
   .fld label{font-size:9.5px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.02em;white-space:nowrap;}
   .fld .txt,.fld select{padding:4px 6px;width:100%;}
@@ -102,20 +108,25 @@
   .chk.disabled{opacity:.45;}
   .lmeter{margin-left:auto;font-weight:700;color:#cdd9ff;background:rgba(59,130,246,.16);border:1px solid rgba(59,130,246,.35);
           padding:4px 9px;border-radius:7px;white-space:nowrap;align-self:center;}
-  .numbox{display:flex;align-items:stretch;border:1px solid var(--line);border-radius:7px;overflow:hidden;background:var(--input);}
-  .numbox input{border:none;width:40px;text-align:center;padding:4px 2px;background:var(--input);color:var(--text);}
+  .numbox{display:flex;align-items:stretch;border:1px solid var(--line);border-radius:7px;overflow:hidden;background:var(--input);width:100%;}
+  .numbox input{border:none;flex:1 1 0;min-width:0;width:auto;text-align:center;padding:4px 2px;background:var(--input);color:var(--text);}
   .numbox input:focus{outline:2px solid var(--accent);outline-offset:-2px;}
-  .numbox button{border:none;border-radius:0;padding:0 8px;background:var(--panel2);font-weight:800;color:var(--text);}
+  .numbox button{border:none;border-radius:0;padding:0 10px;background:var(--panel2);font-weight:800;color:var(--text);flex:none;}
   .numbox button:hover{background:#2c3744;}
   .numbox .sep{width:1px;background:var(--line);}
   .del{align-self:center;flex:none;}
   /* Feldbreiten */
   .w-num{width:120px}.w-kunde{width:140px}.w-datum{width:84px}.w-dest{width:62px}
   .w-pal{width:54px}.w-mm{width:64px}.w-art{width:128px}
+  .w-reihen{width:104px}.w-stack{width:92px;flex:none}.w-akt{width:58px;flex:none}
+  .bem{flex:1 1 160px;min-width:120px;}
   svg .pal-label{font-weight:700;fill:#11203a;paint-order:stroke;stroke:rgba(255,255,255,.75);stroke-width:60px;}
   /* paste modal */
-  #modal,#nameModal,#settingsModal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:50;}
-  #modal.open,#nameModal.open,#settingsModal.open{display:flex;}
+  #modal,#nameModal,#settingsModal,#noteModal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:50;}
+  #modal.open,#nameModal.open,#settingsModal.open,#noteModal.open{display:flex;}
+  #btnNote.hasnote{border-color:var(--accent);color:#cdd9ff;}
+  #btnNote.hasnote::after{content:"";position:absolute;top:5px;right:5px;width:6px;height:6px;border-radius:50%;background:var(--accent);}
+  #btnNote{position:relative;}
   #nameInput{width:100%;font-size:14px;padding:9px 11px;margin-bottom:2px;}
   .settingsbox{width:min(640px,94vw);max-height:88vh;overflow:auto;}
   .settingsbox h4{margin:16px 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);}
@@ -147,35 +158,65 @@
   .toast pre{margin:4px 0 0;font-size:11px;white-space:pre-wrap;opacity:.85;font-family:ui-monospace,monospace;}
   .toast .x{margin-left:auto;cursor:pointer;font-weight:800;border:none;background:none;color:inherit;font-size:15px;line-height:1;padding:0 2px;}
   .toast b{font-weight:800;}
+  /* Druckansicht (nur beim Drucken sichtbar) */
+  #printView{display:none;color:#000;background:#fff;padding:4px;}
+  #printView h1{font-size:18px;margin:0 0 4px;}
+  #printView h2{font-size:13px;margin:12px 0 5px;}
+  #printView .pmeta{font-size:11.5px;line-height:1.5;margin-bottom:8px;}
+  #printView .psvg{margin-bottom:8px;overflow:hidden;}
+  #printView .psvg svg{width:100%;height:auto;display:block;}
+  #printView .premarks{margin:8px 0;padding:6px 8px;border:1px solid #ccc;border-radius:6px;white-space:pre-wrap;font-size:11.5px;}
+  #printView table{width:100%;border-collapse:collapse;font-size:10.5px;}
+  #printView th,#printView td{border:1px solid #bbb;padding:3px 5px;text-align:left;vertical-align:top;}
+  #printView th{background:#eee;}
+  @media print{
+    html,body{height:auto!important;overflow:visible!important;background:#fff!important;}
+    body{display:block!important;}
+    body > *{display:none!important;}
+    #printView{display:block!important;}
+    @page{margin:12mm;}
+  }
+  /* Tooltip: Palettenmaße beim Hover */
+  #palTip{position:fixed;z-index:70;pointer-events:none;display:none;background:#1f2733;color:#fff;
+          border:1px solid var(--line);border-radius:7px;padding:6px 9px;font-size:12px;line-height:1.4;
+          box-shadow:0 6px 18px rgba(0,0,0,.45);max-width:240px;white-space:nowrap;}
+  #palTip b{color:#cdd9ff;}
 </style>
 </head>
 <body>
 
 <div id="top">
   <div id="toolbar">
-    <label for="truckSel">LKW</label>
+    <label for="truckSel" data-i18n="truckLabel">LKW</label>
     <select id="truckSel"></select>
-    <button id="btnAdd"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>Neuer Auftrag</button>
-    <button id="btnPaste"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="3" width="8" height="4" rx="1"/><path d="M9 5H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3"/></svg>Aus Zwischenablage</button>
-    <button id="btnRefresh" class="icon" title="Aktualisieren">
+    <button id="btnAdd"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg><span data-i18n="btnAdd">Neuer Auftrag</span></button>
+    <button id="btnPaste"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="3" width="8" height="4" rx="1"/><path d="M9 5H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3"/></svg><span data-i18n="btnPaste">Aus Zwischenablage</span></button>
+    <button id="btnRefresh" class="icon" title="Aktualisieren" data-i18n-title="titleRefresh">
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
     </button>
-    <button id="btnUndo" class="icon" title="Rückgängig (Strg+Z)" disabled>
+    <button id="btnUndo" class="icon" title="Rückgängig (Strg+Z)" data-i18n-title="titleUndo" disabled>
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a6 6 0 0 1 0 12H9"/></svg>
     </button>
-    <button id="btnDeselect" title="Alle Aufträge auf inaktiv setzen"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M16 9l-6 6-3-3"/></svg>Alle inaktiv</button>
+    <button id="btnDeselect" title="Alle Aufträge auf inaktiv setzen" data-i18n-title="titleDeselect"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M16 9l-6 6-3-3"/></svg><span data-i18n="btnDeselect">Alle inaktiv</span></button>
+    <button id="btnHideInactive" title="Inaktive Aufträge in der Liste aus-/einblenden" data-i18n-title="titleHide"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20C5 20 1 12 1 12a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><path d="M1 1l22 22"/></svg><span id="hideLabel">Inaktive ausblenden</span></button>
     <div class="spacer"></div>
-    <button id="btnExport" class="icon" title="Ladung als JSON exportieren">
+    <button id="btnExport" class="icon" title="Ladung als JSON exportieren" data-i18n-title="titleExport">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M8 11l4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
     </button>
-    <button id="btnImport" class="icon" title="Ladung aus JSON importieren">
+    <button id="btnImport" class="icon" title="Ladung aus JSON importieren" data-i18n-title="titleImport">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15V3M8 7l4-4 4 4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
     </button>
     <input type="file" id="fileImport" accept="application/json,.json" style="display:none">
-    <button id="btnSettings" class="icon" title="Einstellungen (LKW-Typen, Anzeige)">
+    <button id="btnPrint" class="icon" title="Drucken / als PDF speichern" data-i18n-title="titlePrint">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z"/></svg>
+    </button>
+    <button id="btnNote" class="icon" title="Bemerkungen zur Ladung" data-i18n-title="titleNote">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16v11H8l-4 4V5z"/><path d="M8 9h8M8 12.5h5"/></svg>
+    </button>
+    <button id="btnSettings" class="icon" title="Einstellungen (LKW-Typen, Anzeige)" data-i18n-title="titleSettings">
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
     </button>
-    <button id="btnReset" class="ghostdanger"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M6 6l1 14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-14"/></svg><span id="resetLabel">Alle löschen / Reset</span></button>
+    <button id="btnReset" class="ghostdanger"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M6 6l1 14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-14"/></svg><span id="resetLabel" data-i18n="resetLabel">Alle löschen / Reset</span></button>
   </div>
   <div id="stageWrap">
     <div id="stage">
@@ -193,49 +234,67 @@
 <div id="list"></div>
 
 <div id="toasts"></div>
+<div id="palTip"></div>
+<div id="printView"></div>
 
 <div id="modal">
   <div class="modalbox">
-    <h3>Aufträge einfügen</h3>
-    <p>Inhalt aus dem Planungssystem hier einfügen (STRG+V) und auf „Übernehmen“ klicken.</p>
+    <h3 data-i18n="pasteTitle">Aufträge einfügen</h3>
+    <p data-i18n="pasteDesc">Inhalt aus dem Planungssystem hier einfügen (STRG+V) und auf „Übernehmen“ klicken.</p>
     <textarea id="pasteArea" placeholder="1  *3911510  Landkost  25.03.26 AT43 9013 01 11  16  5  1200 1059 2000&#10;..."></textarea>
     <div class="modalbtns">
-      <button id="pasteCancel">Abbrechen</button>
-      <button id="pasteOk" class="primary">Übernehmen</button>
+      <button id="pasteCancel" data-i18n="btnCancel">Abbrechen</button>
+      <button id="pasteOk" class="primary" data-i18n="btnApply">Übernehmen</button>
     </div>
   </div>
 </div>
 
 <div id="nameModal">
   <div class="modalbox">
-    <h3>Ladung exportieren</h3>
-    <p>Dateiname für die JSON-Datei:</p>
+    <h3 data-i18n="expTitle">Ladung exportieren</h3>
+    <p data-i18n="expFileLabel">Dateiname für die JSON-Datei:</p>
     <input id="nameInput" class="txt" autocomplete="off">
+    <p style="margin-top:12px" data-i18n="expNoteLabel">Bemerkungen (optional, werden in der JSON gespeichert):</p>
+    <textarea id="expNote" style="width:100%;height:90px;resize:vertical;font-family:inherit;border:1px solid var(--line);border-radius:8px;padding:9px;background:var(--input);color:var(--text);font-size:13px;"></textarea>
     <div class="modalbtns">
-      <button id="nameCancel">Abbrechen</button>
-      <button id="nameOk" class="primary">Speichern</button>
+      <button id="nameCancel" data-i18n="btnCancel">Abbrechen</button>
+      <button id="nameOk" class="primary" data-i18n="btnSave">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<div id="noteModal">
+  <div class="modalbox">
+    <h3 data-i18n="noteTitle">Bemerkungen zur Ladung</h3>
+    <p data-i18n="noteDesc">Frei eingebbarer Text — wird beim Export in die JSON übernommen und beim Import wieder geladen.</p>
+    <textarea id="noteArea" style="width:100%;height:160px;resize:vertical;font-family:inherit;border:1px solid var(--line);border-radius:8px;padding:10px;background:var(--input);color:var(--text);font-size:13px;"></textarea>
+    <div class="modalbtns">
+      <button id="noteCancel" data-i18n="btnCancel">Abbrechen</button>
+      <button id="noteOk" class="primary" data-i18n="btnApply">Übernehmen</button>
     </div>
   </div>
 </div>
 
 <div id="settingsModal">
   <div class="modalbox settingsbox">
-    <h3>Einstellungen</h3>
-    <h4>LKW-Typen <span style="text-transform:none;font-weight:600">(Maße in Metern)</span></h4>
-    <div class="thead"><span class="tname">Name</span><span class="tdim">Länge</span><span class="tdim">Breite</span><span class="tdim">Höhe</span><span style="width:34px"></span></div>
+    <h3 data-i18n="setTitle">Einstellungen</h3>
+    <h4><span data-i18n="setTrucks">LKW-Typen</span> <span style="text-transform:none;font-weight:600" data-i18n="setTrucksUnit">(Maße in Metern)</span></h4>
+    <div class="thead"><span class="tname" data-i18n="th_name">Name</span><span class="tdim" data-i18n="th_l">Länge</span><span class="tdim" data-i18n="th_w">Breite</span><span class="tdim" data-i18n="th_h">Höhe</span><span style="width:34px"></span></div>
     <div id="truckTable"></div>
     <div class="addtruck">
-      <input id="ntName" class="txt tname" placeholder="Neuer Typ">
+      <input id="ntName" class="txt tname" placeholder="Neuer Typ" data-i18n-ph="ph_newtype">
       <input id="ntL" class="txt tdim" placeholder="L" inputmode="decimal">
-      <input id="ntW" class="txt tdim" placeholder="B" inputmode="decimal">
+      <input id="ntW" class="txt tdim" placeholder="B" inputmode="decimal" data-i18n-ph="ph_w">
       <input id="ntH" class="txt tdim" placeholder="H" inputmode="decimal">
       <button id="ntAdd" class="primary" title="LKW-Typ hinzufügen">+</button>
     </div>
-    <h4>Anzeige</h4>
-    <label class="chk"><input type="checkbox" id="setCrosshair"> Fadenkreuz / Distanzanzeige beim Überfahren freier Lücken</label>
+    <h4 data-i18n="setLanguage">Sprache / Language</h4>
+    <select id="langSel" class="txt" style="width:auto"><option value="de">Deutsch</option><option value="en">English</option><option value="hu">Magyar</option></select>
+    <h4 data-i18n="setDisplay">Anzeige</h4>
+    <label class="chk"><input type="checkbox" id="setCrosshair"> <span data-i18n="setCrosshair">Fadenkreuz / Distanzanzeige beim Überfahren freier Lücken</span></label>
     <div class="modalbtns">
-      <button id="setResetTrucks" class="ghostdanger">Standard-LKW wiederherstellen</button>
-      <button id="settingsClose" class="primary">Schließen</button>
+      <button id="setResetTrucks" class="ghostdanger" data-i18n="setResetTrucks">Standard-LKW wiederherstellen</button>
+      <button id="settingsClose" class="primary" data-i18n="btnClose">Schließen</button>
     </div>
   </div>
 </div>
@@ -252,7 +311,7 @@ const DEFAULT_TRUCKS = {
 };
 let TRUCKS = {};
 let currentTruck = "Plane";
-const settings = { showCrosshair: true };
+const settings = { showCrosshair: true, lang: "de" };
 const cloneDefaults = () => JSON.parse(JSON.stringify(DEFAULT_TRUCKS));
 function loadConfig(){
   try{
@@ -269,6 +328,152 @@ function saveTrucks(){ try{ localStorage.setItem("lkwPlaner.trucks", JSON.string
 function saveSettings(){ try{ localStorage.setItem("lkwPlaner.settings", JSON.stringify(settings)); }catch(_){} }
 loadConfig();
 
+/* ============================ Übersetzungen (DE/EN) ============================ */
+const I18N = {
+  de: {
+    truckLabel:"LKW", btnAdd:"Neuer Auftrag", btnPaste:"Aus Zwischenablage",
+    titleRefresh:"Aktualisieren", titleUndo:"Rückgängig (Strg+Z)",
+    btnDeselect:"Alle inaktiv", titleDeselect:"Alle Aufträge auf inaktiv setzen",
+    titleHide:"Inaktive Aufträge in der Liste aus-/einblenden",
+    hideShow:"Inaktive einblenden", hideHide:"Inaktive ausblenden",
+    titleExport:"Ladung als JSON exportieren", titleImport:"Ladung aus JSON importieren",
+    titleNote:"Bemerkungen zur Ladung", titleSettings:"Einstellungen (LKW-Typen, Anzeige)",
+    resetLabel:"Alle löschen / Reset", resetArmed:"Sicher? Nochmal klicken",
+    ladeinfo:"Ladeinfo", noActive:"Keine aktiven Aufträge.",
+    palCount:n=>`${n} Paletten`, palLoaded:(l,t)=>`${l} von ${t} Paletten geladen`,
+    fitOk:"✓ Ladung passt auf den LKW",
+    fitBad:n=>`✗ Ladung passt NICHT — ${n} Palette${n===1?" übersteht":"n überstehen"}!`,
+    infoRow:(n,lm)=>`${n} Pal · ${lm} Lademeter`,
+    used:"Genutzte Lademeter:", free:"Frei:", truckLen:"Gesamtlänge LKW:",
+    hiddenInfo:n=>`${n} inaktive${n===1?"r":""} ausgeblendet`,
+    col_auftragsnummer:"Auftragsnr.", col_kunde:"Kunde", col_lieferdatum:"Lieferdatum", col_destCode:"Dest",
+    col_anzahl:"Pal.", col_laenge:"Länge", col_breite:"Breite", col_hoehe:"Höhe",
+    col_ladeart:"Ladeart", col_reihenfolge:"Reihenfolge", col_stapelbar:"Stapelbar", col_aktiv:"Aktiv", col_bemerkung:"Bemerkung",
+    fld_laenge:"Länge mm", fld_breite:"Breite mm", fld_hoehe:"Höhe mm",
+    opt_optimiert:"Optimiert", opt_lang:"Alle Lang laden", opt_breit:"Alle Breit laden",
+    lademeter:lm=>`${lm} Lademeter`, titleDelete:"Auftrag löschen", titleCopyNr:"Auftragsnummer kopieren",
+    emptyList:"Noch keine Aufträge. „Neuer Auftrag“ oder „Aus Zwischenablage“.",
+    pasteTitle:"Aufträge einfügen", pasteDesc:"Inhalt aus dem Planungssystem hier einfügen (STRG+V) und auf „Übernehmen“ klicken.",
+    btnCancel:"Abbrechen", btnApply:"Übernehmen", btnSave:"Speichern", btnClose:"Schließen",
+    expTitle:"Ladung exportieren", expFileLabel:"Dateiname für die JSON-Datei:",
+    expNoteLabel:"Bemerkungen (optional, werden in der JSON gespeichert):",
+    noteTitle:"Bemerkungen zur Ladung", noteDesc:"Frei eingebbarer Text — wird beim Export in die JSON übernommen und beim Import wieder geladen.",
+    setTitle:"Einstellungen", setTrucks:"LKW-Typen", setTrucksUnit:"(Maße in Metern)",
+    th_name:"Name", th_l:"Länge", th_w:"Breite", th_h:"Höhe", ph_newtype:"Neuer Typ", ph_w:"B",
+    setDisplay:"Anzeige", setCrosshair:"Fadenkreuz / Distanzanzeige beim Überfahren freier Lücken",
+    setResetTrucks:"Standard-LKW wiederherstellen", setLanguage:"Sprache / Language",
+    vorne:"VORNE", tipLBH:"L×B×H:", stacked:"· 2× gestapelt",
+    tNoValid:"Keine gültigen Auftragszeilen erkannt.",
+    imported:n=>`<b>${n}</b> Auftrag${n===1?"":"e"} importiert`, dupSkipped:n=>`<b>${n}</b> Duplikat${n===1?"":"e"} übersprungen`,
+    incomplIgnored:n=>`<b>${n}</b> unvollständige Zeile${n===1?"":"n"} ignoriert`, dupListLabel:"Duplikate: ", andMore:n=>`… und ${n} weitere`,
+    tNoExport:"Keine Aufträge zum Exportieren.", exported:n=>`<b>${n}</b> Auftrag${n===1?"":"e"} exportiert.`,
+    tImportFail:"Import fehlgeschlagen.", withRemarks:" (mit Bemerkungen)",
+    tMinTruck:"Mindestens ein LKW-Typ muss bleiben.", tNameMissing:"Name fehlt.", tNameExists:"Name existiert bereits.",
+    tDimsNeeded:"Länge, Breite, Höhe (in m) angeben.",
+    copied:nr=>`Auftragsnummer <b>${nr}</b> kopiert`, copyFail:"Kopieren nicht möglich",
+    titlePrint:"Drucken / als PDF speichern", printTitle:"LKW-Beladungsplan", printDate:"Datum",
+    printDims:"L×B×H mm", printLmCol:"Lademeter", printRemarks:"Bemerkungen", printOrders:"Aktive Aufträge",
+  },
+  en: {
+    truckLabel:"Truck", btnAdd:"New order", btnPaste:"From clipboard",
+    titleRefresh:"Refresh", titleUndo:"Undo (Ctrl+Z)",
+    btnDeselect:"All inactive", titleDeselect:"Set all orders inactive",
+    titleHide:"Show/hide inactive orders in the list",
+    hideShow:"Show inactive", hideHide:"Hide inactive",
+    titleExport:"Export load as JSON", titleImport:"Import load from JSON",
+    titleNote:"Load remarks", titleSettings:"Settings (truck types, display)",
+    resetLabel:"Clear all / Reset", resetArmed:"Sure? Click again",
+    ladeinfo:"Load info", noActive:"No active orders.",
+    palCount:n=>`${n} pallets`, palLoaded:(l,t)=>`${l} of ${t} pallets loaded`,
+    fitOk:"✓ Load fits on the truck",
+    fitBad:n=>`✗ Load does NOT fit — ${n} pallet${n===1?" overhangs":"s overhang"}!`,
+    infoRow:(n,lm)=>`${n} plt · ${lm} load m`,
+    used:"Used load meters:", free:"Free:", truckLen:"Truck length:",
+    hiddenInfo:n=>`${n} inactive hidden`,
+    col_auftragsnummer:"Order no.", col_kunde:"Customer", col_lieferdatum:"Delivery date", col_destCode:"Dest",
+    col_anzahl:"Plt.", col_laenge:"Length", col_breite:"Width", col_hoehe:"Height",
+    col_ladeart:"Load type", col_reihenfolge:"Sequence", col_stapelbar:"Stackable", col_aktiv:"Active", col_bemerkung:"Remark",
+    fld_laenge:"Length mm", fld_breite:"Width mm", fld_hoehe:"Height mm",
+    opt_optimiert:"Optimized", opt_lang:"Load all lengthwise", opt_breit:"Load all crosswise",
+    lademeter:lm=>`${lm} load m`, titleDelete:"Delete order", titleCopyNr:"Copy order number",
+    emptyList:"No orders yet. “New order” or “From clipboard”.",
+    pasteTitle:"Paste orders", pasteDesc:"Paste content from the planning system here (Ctrl+V) and click “Apply”.",
+    btnCancel:"Cancel", btnApply:"Apply", btnSave:"Save", btnClose:"Close",
+    expTitle:"Export load", expFileLabel:"File name for the JSON file:",
+    expNoteLabel:"Remarks (optional, stored in the JSON):",
+    noteTitle:"Load remarks", noteDesc:"Free text — included in the JSON on export and reloaded on import.",
+    setTitle:"Settings", setTrucks:"Truck types", setTrucksUnit:"(dimensions in meters)",
+    th_name:"Name", th_l:"Length", th_w:"Width", th_h:"Height", ph_newtype:"New type", ph_w:"W",
+    setDisplay:"Display", setCrosshair:"Crosshair / distance display when hovering free gaps",
+    setResetTrucks:"Restore default trucks", setLanguage:"Sprache / Language",
+    vorne:"FRONT", tipLBH:"L×W×H:", stacked:"· 2× stacked",
+    tNoValid:"No valid order lines found.",
+    imported:n=>`<b>${n}</b> order${n===1?"":"s"} imported`, dupSkipped:n=>`<b>${n}</b> duplicate${n===1?"":"s"} skipped`,
+    incomplIgnored:n=>`<b>${n}</b> incomplete line${n===1?"":"s"} ignored`, dupListLabel:"Duplicates: ", andMore:n=>`… and ${n} more`,
+    tNoExport:"No orders to export.", exported:n=>`<b>${n}</b> order${n===1?"":"s"} exported.`,
+    tImportFail:"Import failed.", withRemarks:" (with remarks)",
+    tMinTruck:"At least one truck type must remain.", tNameMissing:"Name missing.", tNameExists:"Name already exists.",
+    tDimsNeeded:"Enter length, width, height (in m).",
+    copied:nr=>`Order number <b>${nr}</b> copied`, copyFail:"Copy failed",
+    titlePrint:"Print / save as PDF", printTitle:"Truck loading plan", printDate:"Date",
+    printDims:"L×W×H mm", printLmCol:"Load m", printRemarks:"Remarks", printOrders:"Active orders",
+  },
+  hu: {
+    truckLabel:"Kamion", btnAdd:"Új megbízás", btnPaste:"Vágólapról",
+    titleRefresh:"Frissítés", titleUndo:"Visszavonás (Ctrl+Z)",
+    btnDeselect:"Mind inaktív", titleDeselect:"Összes megbízás inaktívra állítása",
+    titleHide:"Inaktív megbízások elrejtése/megjelenítése a listában",
+    hideShow:"Inaktív megjelenítése", hideHide:"Inaktív elrejtése",
+    titleExport:"Rakomány exportálása JSON-ként", titleImport:"Rakomány importálása JSON-ból",
+    titleNote:"Megjegyzések a rakományhoz", titleSettings:"Beállítások (kamiontípusok, megjelenítés)",
+    resetLabel:"Összes törlése / Visszaállítás", resetArmed:"Biztos? Kattints újra",
+    ladeinfo:"Rakományinfó", noActive:"Nincs aktív megbízás.",
+    palCount:n=>`${n} raklap`, palLoaded:(l,t)=>`${l} / ${t} raklap berakva`,
+    fitOk:"✓ A rakomány elfér a kamionon",
+    fitBad:n=>`✗ A rakomány NEM fér el — ${n} raklap kilóg!`,
+    infoRow:(n,lm)=>`${n} raklap · ${lm} rakodóméter`,
+    used:"Felhasznált rakodóméter:", free:"Szabad:", truckLen:"Kamion teljes hossza:",
+    hiddenInfo:n=>`${n} inaktív elrejtve`,
+    col_auftragsnummer:"Megb.szám", col_kunde:"Ügyfél", col_lieferdatum:"Száll. dátum", col_destCode:"Cél",
+    col_anzahl:"Rl.", col_laenge:"Hossz", col_breite:"Szél.", col_hoehe:"Mag.",
+    col_ladeart:"Rakodás", col_reihenfolge:"Sorrend", col_stapelbar:"Rakásolható", col_aktiv:"Aktív", col_bemerkung:"Megjegyzés",
+    fld_laenge:"Hossz mm", fld_breite:"Szél. mm", fld_hoehe:"Mag. mm",
+    opt_optimiert:"Optimalizált", opt_lang:"Összes hosszában", opt_breit:"Összes keresztben",
+    lademeter:lm=>`${lm} rakodóméter`, titleDelete:"Megbízás törlése", titleCopyNr:"Megbízásszám másolása",
+    emptyList:"Még nincs megbízás. „Új megbízás” vagy „Vágólapról”.",
+    pasteTitle:"Megbízások beillesztése", pasteDesc:"Illeszd be ide a tervezőrendszer tartalmát (Ctrl+V), majd kattints az „Alkalmaz” gombra.",
+    btnCancel:"Mégse", btnApply:"Alkalmaz", btnSave:"Mentés", btnClose:"Bezárás",
+    expTitle:"Rakomány exportálása", expFileLabel:"A JSON-fájl neve:",
+    expNoteLabel:"Megjegyzések (opcionális, a JSON-ba mentve):",
+    noteTitle:"Megjegyzések a rakományhoz", noteDesc:"Szabad szöveg — exportkor a JSON-ba kerül, importkor visszatöltődik.",
+    setTitle:"Beállítások", setTrucks:"Kamiontípusok", setTrucksUnit:"(méretek méterben)",
+    th_name:"Név", th_l:"Hossz", th_w:"Szélesség", th_h:"Magasság", ph_newtype:"Új típus", ph_w:"Sz",
+    setDisplay:"Megjelenítés", setCrosshair:"Szálkereszt / távolságkijelzés üres helyek fölött",
+    setResetTrucks:"Alapértelmezett kamionok visszaállítása", setLanguage:"Nyelv / Language",
+    vorne:"ELŐL", tipLBH:"H×Sz×M:", stacked:"· 2× rakásolva",
+    tNoValid:"Nem található érvényes megbízássor.",
+    imported:n=>`<b>${n}</b> megbízás importálva`, dupSkipped:n=>`<b>${n}</b> duplikátum kihagyva`,
+    incomplIgnored:n=>`<b>${n}</b> hiányos sor figyelmen kívül hagyva`, dupListLabel:"Duplikátumok: ", andMore:n=>`… és még ${n}`,
+    tNoExport:"Nincs exportálható megbízás.", exported:n=>`<b>${n}</b> megbízás exportálva.`,
+    tImportFail:"Az import sikertelen.", withRemarks:" (megjegyzésekkel)",
+    tMinTruck:"Legalább egy kamiontípusnak maradnia kell.", tNameMissing:"Hiányzik a név.", tNameExists:"A név már létezik.",
+    tDimsNeeded:"Add meg a hosszt, szélességet, magasságot (m-ben).",
+    copied:nr=>`Megbízásszám <b>${nr}</b> másolva`, copyFail:"A másolás nem sikerült",
+    titlePrint:"Nyomtatás / mentés PDF-be", printTitle:"Kamion rakományterv", printDate:"Dátum",
+    printDims:"H×Sz×M mm", printLmCol:"Rakodóméter", printRemarks:"Megjegyzések", printOrders:"Aktív megbízások",
+  },
+};
+function t(key, ...args){
+  const v = (I18N[settings.lang] || I18N.de)[key];
+  return typeof v === "function" ? v(...args) : (v ?? key);
+}
+function applyStatic(){
+  document.querySelectorAll("[data-i18n]").forEach(el => el.textContent = t(el.dataset.i18n));
+  document.querySelectorAll("[data-i18n-title]").forEach(el => el.title = t(el.dataset.i18nTitle));
+  document.querySelectorAll("[data-i18n-ph]").forEach(el => el.placeholder = t(el.dataset.i18nPh));
+  document.documentElement.lang = settings.lang;
+}
+
 /* ============================ Farbpalette ============================ */
 const PALETTE = ["#2563eb","#16a34a","#d97706","#9333ea","#dc2626","#0891b2",
   "#ca8a04","#db2777","#4f46e5","#15803d","#b45309","#0d9488","#7c3aed","#e11d48"];
@@ -278,6 +483,8 @@ const nextColor = () => PALETTE[(colorIdx++) % PALETTE.length];
 /* ============================ Modell ============================ */
 let uid = 1;
 let orders = [];
+let loadBemerkungen = "";   // ladungs-weite Bemerkungen (Export/Import + Notiz-Button)
+let hideInactive = false;   // inaktive Aufträge in der Liste ausblenden
 
 function makeOrder(data={}){
   return Object.assign({
@@ -286,7 +493,7 @@ function makeOrder(data={}){
     auftragsnummer:"", kunde:"", lieferdatum:"", destCode:"",
     anzahl:1, laenge:1200, breite:800, hoehe:1200,
     ladeart:"optimiert", reihenfolge:1,
-    stapelbar:false, aktiv:false,
+    stapelbar:false, aktiv:false, bemerkung:"",
   }, data);
 }
 
@@ -637,7 +844,7 @@ function renderTruck(layout){
   s += `<rect x="${pad}" y="${pad}" width="${L}" height="${W}" rx="40" fill="#0e151d" stroke="#3a4756" stroke-width="14"/>`;
   // Front-Markierung (vorne = links)
   s += `<rect x="${pad}" y="${pad}" width="60" height="${W}" fill="#5b6b7d" opacity=".25"/>`;
-  s += `<text x="${pad+90}" y="${pad+W/2}" font-size="190" fill="#7b8a9c" dominant-baseline="middle" transform="rotate(-90 ${pad+90} ${pad+W/2})" text-anchor="middle">VORNE</text>`;
+  s += `<text x="${pad+90}" y="${pad+W/2}" font-size="190" fill="#7b8a9c" dominant-baseline="middle" transform="rotate(-90 ${pad+90} ${pad+W/2})" text-anchor="middle">${t('vorne')}</text>`;
 
   // Paletten (jede in <g data-oid> -> Klick hebt Auftragszeile hervor)
   for(const p of placements){
@@ -678,11 +885,16 @@ function renderTotals(layout){
   const L = layout.truck.l/1000;
   const used = Math.ceil(layout.usedLength/100)/10;
   const free = Math.max(0, Math.round((L-used)*10)/10);
+  const hidden = hideInactive ? orders.filter(o=>!o.aktiv).length : 0;
+  const hiddenSpan = hidden>0
+    ? `<span class="hiddeninfo"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20C5 20 1 12 1 12a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><path d="M1 1l22 22"/></svg>${esc(t('hiddenInfo', hidden))}</span>`
+    : "";
   const el = document.getElementById("totals");
   el.innerHTML =
-    `<span>Genutzte Lademeter: <b class="${layout.fits?'':'bad'}">${used.toFixed(1)} m</b></span>` +
-    `<span>Frei: <b>${free.toFixed(1)} m</b></span>` +
-    `<span>Gesamtlänge LKW: <b>${L.toFixed(2)} m</b></span>`;
+    `<span>${t('used')} <b class="${layout.fits?'':'bad'}">${used.toFixed(1)} m</b></span>` +
+    `<span>${t('free')} <b>${free.toFixed(1)} m</b></span>` +
+    `<span>${t('truckLen')} <b>${L.toFixed(2)} m</b></span>` +
+    hiddenSpan;
 }
 function renderInfo(layout){
   const truck = layout.truck;
@@ -690,27 +902,23 @@ function renderInfo(layout){
   const totalPal = active.reduce((s,o)=> s + o.anzahl, 0);
   const over = layout.placements.filter(p=>p.overflow).reduce((s,p)=> s + (p.stack||1), 0);
   const loaded = totalPal - over;
-  const countTxt = over>0 ? `${loaded} von ${totalPal} Paletten geladen` : `${totalPal} Paletten`;
+  const countTxt = over>0 ? t('palLoaded', loaded, totalPal) : t('palCount', totalPal);
   document.getElementById("infoHead").innerHTML =
-    `<span>Ladeinfo</span>` + (active.length ? `<span class="infocount ${over>0?"bad":""}">${countTxt}</span>` : "");
+    `<span>${t('ladeinfo')}</span>` + (active.length ? `<span class="infocount ${over>0?"bad":""}">${esc(countTxt)}</span>` : "");
   const body = document.getElementById("infoBody");
-  if(active.length===0){ body.innerHTML = `<div class="empty" style="grid-column:auto">Keine aktiven Aufträge.</div>`; }
+  if(active.length===0){ body.innerHTML = `<div class="empty" style="grid-column:auto">${t('noActive')}</div>`; }
   else{
     body.innerHTML = active.map(o=>{
       const lm = orderLademeter(o,truck).toFixed(1);
       return `<div class="inforow"><span class="infodot" style="background:${o.color}"></span>`+
         `<span class="infotxt"><b>${esc(o.auftragsnummer||"#"+o.id)}</b> · ${esc(o.kunde||"—")}<br>`+
-        `<small>${o.anzahl} Pal · ${lm} Lademeter</small></span></div>`;
+        `<small>${esc(t('infoRow', o.anzahl, lm))}</small></span></div>`;
     }).join("");
   }
   const msg = document.getElementById("fitMsg");
   if(active.length===0){ msg.className="fit-ok"; msg.textContent="–"; }
-  else if(layout.fits){ msg.className="fit-ok"; msg.textContent="✓ Ladung passt auf den LKW"; }
-  else{
-    const over = layout.placements.filter(p=>p.overflow).reduce((s,p)=>s+(p.stack||1), 0);
-    msg.className="fit-bad";
-    msg.textContent = `✗ Ladung passt NICHT — ${over} Palette${over===1?" übersteht":"n überstehen"}!`;
-  }
+  else if(layout.fits){ msg.className="fit-ok"; msg.textContent=t('fitOk'); }
+  else{ msg.className="fit-bad"; msg.textContent=t('fitBad', over); }
 }
 
 /* ============================ Rendering: Auftragsliste ============================ */
@@ -724,9 +932,10 @@ const SORT_COLS = [
   {key:"breite",         label:"Breite",      cls:"w-mm",  num:true},
   {key:"hoehe",          label:"Höhe",        cls:"w-mm",  num:true},
   {key:"ladeart",        label:"Ladeart",     cls:"w-art"},
-  {key:"reihenfolge",    label:"Reihenfolge", cls:""},
-  {key:"stapelbar",      label:"Stapelbar",   cls:"", bool:true},
-  {key:"aktiv",          label:"Aktiv",       cls:"", bool:true},
+  {key:"reihenfolge",    label:"Reihenfolge", cls:"w-reihen"},
+  {key:"stapelbar",      label:"Stapelbar",   cls:"w-stack", bool:true},
+  {key:"aktiv",          label:"Aktiv",       cls:"w-akt", bool:true},
+  {key:"bemerkung",      label:"Bemerkung",   cls:"bem"},
 ];
 let sortState = {key:null, dir:1};
 function dateVal(s){ const m=/^(\d{2})\.(\d{2})\.(\d{2})$/.exec(String(s||"").trim()); return m ? (+m[3])*10000+(+m[2])*100+(+m[1]) : -1; }
@@ -747,49 +956,51 @@ function renderList(){
   const truck = TRUCKS[currentTruck];
   const list = document.getElementById("list");
   if(orders.length===0){
-    list.innerHTML = `<div class="empty">Noch keine Aufträge. „Neuer Auftrag“ oder „Aus Zwischenablage“.</div>`;
+    list.innerHTML = `<div class="empty">${t('emptyList')}</div>`;
     return;
   }
   const head = `<div id="listHead"><span class="swatch" style="visibility:hidden"></span>` +
     SORT_COLS.map(c=>{
       const arrow = sortState.key===c.key ? `<span class="sortarrow">${sortState.dir>0?"▲":"▼"}</span>` : "";
-      return `<span class="${c.cls}" data-sort="${c.key}">${c.label}${arrow}</span>`;
+      return `<span class="${c.cls}" data-sort="${c.key}">${t("col_"+c.key)}${arrow}</span>`;
     }).join("") + `</div>`;
-  list.innerHTML = head + orders.map(o=>{
+  const visible = hideInactive ? orders.filter(o=>o.aktiv) : orders;
+  list.innerHTML = head + visible.map(o=>{
     const stackPossible = 2*o.hoehe <= truck.h;
     const lm = orderLademeter(o,truck).toFixed(1);
     return `<div class="order ${o.aktiv?'':'inactive'}" style="--c:${o.color}" data-id="${o.id}">
-      <span class="swatch"></span>
-      <div class="fld w-num"><label>Auftragsnr.</label><input class="txt" data-f="auftragsnummer" value="${esc(o.auftragsnummer)}"></div>
-      <div class="fld w-kunde"><label>Kunde</label><input class="txt" data-f="kunde" value="${esc(o.kunde)}"></div>
-      <div class="fld w-datum"><label>Lieferdatum</label><input class="txt" data-f="lieferdatum" value="${esc(o.lieferdatum)}"></div>
-      <div class="fld w-dest"><label>Dest</label><input class="txt" data-f="destCode" value="${esc(o.destCode)}"></div>
-      <div class="fld w-pal"><label>Pal.</label><input class="txt num" data-f="anzahl" value="${o.anzahl}"></div>
-      <div class="fld w-mm"><label>Länge mm</label><input class="txt num" data-f="laenge" value="${o.laenge}"></div>
-      <div class="fld w-mm"><label>Breite mm</label><input class="txt num" data-f="breite" value="${o.breite}"></div>
-      <div class="fld w-mm"><label>Höhe mm</label><input class="txt num" data-f="hoehe" value="${o.hoehe}"></div>
-      <div class="fld w-art"><label>Ladeart</label>
+      <span class="swatch" title="${t('titleCopyNr')}"></span>
+      <div class="fld w-num"><label>${t('col_auftragsnummer')}</label><input class="txt" data-f="auftragsnummer" value="${esc(o.auftragsnummer)}"></div>
+      <div class="fld w-kunde"><label>${t('col_kunde')}</label><input class="txt" data-f="kunde" value="${esc(o.kunde)}"></div>
+      <div class="fld w-datum"><label>${t('col_lieferdatum')}</label><input class="txt" data-f="lieferdatum" value="${esc(o.lieferdatum)}"></div>
+      <div class="fld w-dest"><label>${t('col_destCode')}</label><input class="txt" data-f="destCode" value="${esc(o.destCode)}"></div>
+      <div class="fld w-pal"><label>${t('col_anzahl')}</label><input class="txt num" data-f="anzahl" value="${o.anzahl}"></div>
+      <div class="fld w-mm"><label>${t('fld_laenge')}</label><input class="txt num" data-f="laenge" value="${o.laenge}"></div>
+      <div class="fld w-mm"><label>${t('fld_breite')}</label><input class="txt num" data-f="breite" value="${o.breite}"></div>
+      <div class="fld w-mm"><label>${t('fld_hoehe')}</label><input class="txt num" data-f="hoehe" value="${o.hoehe}"></div>
+      <div class="fld w-art"><label>${t('col_ladeart')}</label>
         <select data-f="ladeart">
-          <option value="optimiert" ${o.ladeart==="optimiert"?"selected":""}>Optimiert</option>
-          <option value="lang" ${o.ladeart==="lang"?"selected":""}>Alle Lang laden</option>
-          <option value="breit" ${o.ladeart==="breit"?"selected":""}>Alle Breit laden</option>
+          <option value="optimiert" ${o.ladeart==="optimiert"?"selected":""}>${t('opt_optimiert')}</option>
+          <option value="lang" ${o.ladeart==="lang"?"selected":""}>${t('opt_lang')}</option>
+          <option value="breit" ${o.ladeart==="breit"?"selected":""}>${t('opt_breit')}</option>
         </select>
       </div>
-      <div class="fld"><label>Reihenfolge</label>
+      <div class="fld w-reihen"><label>${t('col_reihenfolge')}</label>
         <div class="numbox">
           <button data-act="dec">−</button><div class="sep"></div>
           <input data-f="reihenfolge" value="${o.reihenfolge}">
           <div class="sep"></div><button data-act="inc">+</button>
         </div>
       </div>
-      <label class="chk ${stackPossible?'':'disabled'}">
-        <input type="checkbox" data-f="stapelbar" ${o.stapelbar?"checked":""} ${stackPossible?"":"disabled"}> Stapelbar
+      <label class="chk w-stack ${stackPossible?'':'disabled'}">
+        <input type="checkbox" data-f="stapelbar" ${o.stapelbar?"checked":""} ${stackPossible?"":"disabled"}> ${t('col_stapelbar')}
       </label>
-      <label class="chk">
-        <input type="checkbox" data-f="aktiv" ${o.aktiv?"checked":""}> Aktiv
+      <label class="chk w-akt">
+        <input type="checkbox" data-f="aktiv" ${o.aktiv?"checked":""}> ${t('col_aktiv')}
       </label>
-      <span class="lmeter">${lm} Lademeter</span>
-      <button class="icon del ghostdanger" data-act="del" title="Auftrag löschen">
+      <div class="fld bem"><label>${t('col_bemerkung')}</label><input class="txt" data-f="bemerkung" value="${esc(o.bemerkung)}" placeholder="…"></div>
+      <span class="lmeter">${esc(t('lademeter', lm))}</span>
+      <button class="icon del ghostdanger" data-act="del" title="${t('titleDelete')}">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M6 6l1 14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-14M10 11v6M14 11v6"/></svg>
       </button>
     </div>`;
@@ -809,7 +1020,7 @@ function recalc(){
   document.querySelectorAll("#list .order").forEach(card=>{
     const o = orders.find(x=>x.id==card.dataset.id); if(!o) return;
     const lm = card.querySelector(".lmeter");
-    if(lm) lm.textContent = orderLademeter(o,truck).toFixed(1) + " Lademeter";
+    if(lm) lm.textContent = t('lademeter', orderLademeter(o,truck).toFixed(1));
     const chk = card.querySelector('input[data-f="stapelbar"]');
     if(chk){
       const possible = 2*o.hoehe <= truck.h;
@@ -817,6 +1028,7 @@ function recalc(){
       chk.closest(".chk").classList.toggle("disabled", !possible);
     }
   });
+  updateHideLabel();
 }
 function renderAll(){ renderList(); recalc(); }
 
@@ -874,7 +1086,7 @@ function applyTruckTable(){
 truckTable.addEventListener("change", applyTruckTable);
 truckTable.addEventListener("click", e=>{
   const b = e.target.closest("[data-deltruck]"); if(!b) return;
-  if(Object.keys(TRUCKS).length<=1){ notify("warn","Mindestens ein LKW-Typ muss bleiben."); return; }
+  if(Object.keys(TRUCKS).length<=1){ notify("warn", t('tMinTruck')); return; }
   delete TRUCKS[b.dataset.deltruck];
   if(!TRUCKS[currentTruck]) currentTruck = Object.keys(TRUCKS)[0];
   saveTrucks(); rebuildTruckSelect(); renderTruckTable(); recalc();
@@ -884,9 +1096,9 @@ document.getElementById("ntAdd").addEventListener("click", ()=>{
   const l = m2mm(document.getElementById("ntL").value);
   const w = m2mm(document.getElementById("ntW").value);
   const h = m2mm(document.getElementById("ntH").value);
-  if(!name){ notify("warn","Name fehlt."); return; }
-  if(TRUCKS[name]){ notify("warn","Name existiert bereits."); return; }
-  if(!(l>0 && w>0 && h>0)){ notify("warn","Länge, Breite, Höhe (in m) angeben."); return; }
+  if(!name){ notify("warn", t('tNameMissing')); return; }
+  if(TRUCKS[name]){ notify("warn", t('tNameExists')); return; }
+  if(!(l>0 && w>0 && h>0)){ notify("warn", t('tDimsNeeded')); return; }
   TRUCKS[name] = {l, w, h};
   saveTrucks(); rebuildTruckSelect(); renderTruckTable(); recalc();
   ["ntName","ntL","ntW","ntH"].forEach(id=> document.getElementById(id).value="");
@@ -902,9 +1114,15 @@ setCrosshair.addEventListener("change", ()=>{
   settings.showCrosshair = setCrosshair.checked; saveSettings();
   if(!settings.showCrosshair) clearHoverGuide();
 });
+document.getElementById("langSel").addEventListener("change", e=>{
+  settings.lang = e.target.value; saveSettings();
+  applyStatic();   // statische Texte
+  renderAll();     // dynamische Inhalte (Liste/Grafik/Info/Totals/Labels)
+});
 function openSettings(){
   renderTruckTable();
   setCrosshair.checked = settings.showCrosshair;
+  document.getElementById("langSel").value = settings.lang;
   settingsModal.classList.add("open");
 }
 document.getElementById("btnSettings").addEventListener("click", openSettings);
@@ -913,20 +1131,38 @@ settingsModal.addEventListener("click", e=>{ if(e.target===settingsModal) settin
 
 // Hover über eine freie Lücke -> zwei Maß-Achsen (Länge × Breite der Lücke) einblenden
 const truckSvgEl = document.getElementById("truckSvg");
+const palTip = document.getElementById("palTip");
 function clearHoverGuide(){ const g = document.getElementById("hoverGuide"); if(g) g.innerHTML = ""; }
-truckSvgEl.addEventListener("mouseleave", clearHoverGuide);
+function hidePalTip(){ palTip.style.display = "none"; }
+function clearHover(){ clearHoverGuide(); hidePalTip(); }
+truckSvgEl.addEventListener("mouseleave", clearHover);
 truckSvgEl.addEventListener("mousemove", e=>{
-  if(!settings.showCrosshair) return;
   const g = document.getElementById("hoverGuide"); if(!g || !hoverLayout) return;
   const ctm = truckSvgEl.getScreenCTM(); if(!ctm) return;
   const pt = truckSvgEl.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
   const loc = pt.matrixTransform(ctm.inverse());
   const pad = HOVER_PAD, { truck, placements } = hoverLayout, L = truck.l, W = truck.w;
   const tx = loc.x - pad, ty = loc.y - pad;
-  if(tx < 0 || tx > L || ty < 0 || ty > W){ g.innerHTML = ""; return; }
-  // im Inneren einer Palette? -> keine Lücke
-  for(const p of placements)
-    if(tx >= p.x-0.01 && tx <= p.x+p.w+0.01 && ty >= p.y-0.01 && ty <= p.y+p.h+0.01){ g.innerHTML = ""; return; }
+  if(tx < 0 || tx > L || ty < 0 || ty > W){ clearHover(); return; }
+  // über einer geladenen Palette? -> Maße (L×B×H) als Tooltip anzeigen
+  for(const p of placements){
+    if(tx >= p.x-0.01 && tx <= p.x+p.w+0.01 && ty >= p.y-0.01 && ty <= p.y+p.h+0.01){
+      g.innerHTML = "";
+      const o = p.order;
+      palTip.innerHTML = `<b>${esc(o.auftragsnummer || "#"+o.id)}</b><br>`+
+        `${t('tipLBH')} ${o.laenge} × ${o.breite} × ${o.hoehe} mm` + (p.stack===2 ? " "+t('stacked') : "");
+      palTip.style.display = "block";
+      const tw = palTip.offsetWidth, th = palTip.offsetHeight;
+      let lx = e.clientX + 14, ty2 = e.clientY + 14;
+      if(lx + tw > window.innerWidth - 6)  lx = e.clientX - tw - 14;
+      if(ty2 + th > window.innerHeight - 6) ty2 = e.clientY - th - 14;
+      palTip.style.left = Math.max(6, lx) + "px";
+      palTip.style.top  = Math.max(6, ty2) + "px";
+      return;
+    }
+  }
+  hidePalTip();
+  if(!settings.showCrosshair){ g.innerHTML = ""; return; }
   // freie Spanne in X (bei Höhe ty) und in Y (bei Länge tx)
   let x0 = 0, x1 = L, y0 = 0, y1 = W;
   for(const p of placements){
@@ -973,6 +1209,10 @@ document.getElementById("btnAdd").addEventListener("click", ()=>{
   record();
   const o = makeOrder({laenge:1200, breite:800, hoehe:1200, anzahl:1, reihenfolge:1});
   orders.push(o);
+  if(hideInactive){   // neuer Auftrag ist inaktiv -> Filter aus, damit er sichtbar ist
+    hideInactive = false;
+    btnHide.classList.remove("toggled");
+  }
   renderAll();
   // zum neuen Auftrag scrollen und Auftragsnummer fokussieren
   const row = document.querySelector(`.order[data-id="${o.id}"]`);
@@ -993,19 +1233,50 @@ document.getElementById("btnDeselect").addEventListener("click", ()=>{
   renderAll();
 });
 
+// Inaktive in der Liste aus-/einblenden
+const btnHide = document.getElementById("btnHideInactive");
+function updateHideLabel(){
+  const inact = orders.filter(o=>!o.aktiv).length;
+  const lbl = document.getElementById("hideLabel");
+  if(lbl) lbl.textContent = (hideInactive ? t('hideShow') : t('hideHide')) + (inact ? ` (${inact})` : "");
+}
+btnHide.addEventListener("click", ()=>{
+  hideInactive = !hideInactive;
+  btnHide.classList.toggle("toggled", hideInactive);
+  renderAll();   // Liste + Totals (inkl. Ausgeblendet-Hinweis) + Label aktualisieren
+});
+
+// Bemerkungen-Notiz (Anzeigen/Bearbeiten)
+const noteModal = document.getElementById("noteModal");
+const noteArea = document.getElementById("noteArea");
+function updateNoteBtn(){
+  document.getElementById("btnNote").classList.toggle("hasnote", loadBemerkungen.trim().length>0);
+}
+document.getElementById("btnNote").addEventListener("click", ()=>{
+  noteArea.value = loadBemerkungen; noteModal.classList.add("open"); noteArea.focus();
+});
+document.getElementById("noteCancel").addEventListener("click", ()=> noteModal.classList.remove("open"));
+document.getElementById("noteOk").addEventListener("click", ()=>{
+  loadBemerkungen = noteArea.value; updateNoteBtn(); noteModal.classList.remove("open");
+});
+noteModal.addEventListener("click", e=>{ if(e.target===noteModal) noteModal.classList.remove("open"); });
+
 // Export als JSON
 const nameModal = document.getElementById("nameModal");
 const nameInput = document.getElementById("nameInput");
+const expNote = document.getElementById("expNote");
 const pad2 = n => String(n).padStart(2,"0");
 function defaultExportName(){
   const d = new Date();
   return `LKW-Ladung ${pad2(d.getDate())}.${pad2(d.getMonth()+1)}.${d.getFullYear()} ${pad2(d.getHours())}-${pad2(d.getMinutes())}`;
 }
 function doExport(name){
-  const data = { app:"lkw-planer", version:1, truck:currentTruck,
+  loadBemerkungen = expNote.value; updateNoteBtn();
+  const data = { app:"lkw-planer", version:1, truck:currentTruck, bemerkungen:loadBemerkungen,
     orders: orders.map(o=>({ auftragsnummer:o.auftragsnummer, kunde:o.kunde, lieferdatum:o.lieferdatum,
       destCode:o.destCode, anzahl:o.anzahl, laenge:o.laenge, breite:o.breite, hoehe:o.hoehe,
-      ladeart:o.ladeart, reihenfolge:o.reihenfolge, stapelbar:o.stapelbar, aktiv:o.aktiv, color:o.color })) };
+      ladeart:o.ladeart, reihenfolge:o.reihenfolge, stapelbar:o.stapelbar, aktiv:o.aktiv,
+      bemerkung:o.bemerkung, color:o.color })) };
   let fname = (name||"").trim().replace(/[\\/:*?"<>|]/g,"-") || defaultExportName();
   if(!/\.json$/i.test(fname)) fname += ".json";
   const blob = new Blob([JSON.stringify(data, null, 2)], {type:"application/json"});
@@ -1014,11 +1285,12 @@ function doExport(name){
   a.href = url; a.download = fname;
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
-  notify("ok", `<b>${orders.length}</b> Auftrag${orders.length===1?"":"e"} exportiert.`, fname, 4000);
+  notify("ok", t('exported', orders.length), fname, 4000);
 }
 document.getElementById("btnExport").addEventListener("click", ()=>{
-  if(orders.length===0){ notify("warn","Keine Aufträge zum Exportieren."); return; }
+  if(orders.length===0){ notify("warn", t('tNoExport')); return; }
   nameInput.value = defaultExportName();
+  expNote.value = loadBemerkungen;
   nameModal.classList.add("open");
   nameInput.focus(); nameInput.select();
 });
@@ -1029,6 +1301,79 @@ nameInput.addEventListener("keydown", e=>{
   if(e.key==="Enter"){ e.preventDefault(); doExport(nameInput.value); nameModal.classList.remove("open"); }
   else if(e.key==="Escape"){ nameModal.classList.remove("open"); }
 });
+
+// Druck-Grafik: weiße LKW-Fläche, Paletten als Schraffur (je Auftrag eigener Winkel/Farbe)
+function buildPrintSvg(layout){
+  const {truck, placements, usedLength} = layout;
+  const L = truck.l, W = truck.w, pad = HOVER_PAD;
+  const vbW = L + pad*2, vbH = W + pad*2 + 320;
+  const ids = [...new Set(placements.map(p=>p.order.id))];
+  const patId = {};
+  let defs = "";
+  ids.forEach((id, idx)=>{
+    const col = (placements.find(p=>p.order.id===id) || {}).color || "#333";
+    const ang = (idx*30) % 180;
+    patId[id] = "pat" + id;
+    defs += `<pattern id="pat${id}" width="170" height="170" patternUnits="userSpaceOnUse" patternTransform="rotate(${ang})">`+
+            `<rect width="170" height="170" fill="#fff"/><rect width="60" height="170" fill="${col}"/></pattern>`;
+  });
+  let s = `<defs>${defs}</defs>`;
+  s += `<rect x="${pad}" y="${pad}" width="${L}" height="${W}" rx="40" fill="#fff" stroke="#555" stroke-width="9"/>`;
+  s += `<text x="${pad+90}" y="${pad+W/2}" font-size="190" fill="#aaa" dominant-baseline="middle" transform="rotate(-90 ${pad+90} ${pad+W/2})" text-anchor="middle">${t('vorne')}</text>`;
+  for(const p of placements){
+    const x = pad + p.x, y = pad + p.y;
+    const stroke = p.overflow ? "#dc2626" : "#333";
+    const dash = p.overflow ? `stroke-dasharray="80 60"` : "";
+    s += `<rect x="${x+12}" y="${y+12}" width="${p.w-24}" height="${p.h-24}" rx="16" fill="url(#${patId[p.order.id]})" stroke="${stroke}" stroke-width="9" ${dash}/>`;
+    const cx = x + p.w/2, cy = y + p.h/2;
+    s += `<text class="pal-label" x="${cx}" y="${cy}" font-size="170" text-anchor="middle" dominant-baseline="central">${esc(p.order.auftragsnummer || "#"+p.order.id)}</text>`;
+    if(p.stack===2) s += `<text x="${x+p.w-70}" y="${y+150}" font-size="150" text-anchor="end" fill="#000" font-weight="800">2×</text>`;
+  }
+  if(usedLength>0 && usedLength<=L){ const ux = pad+usedLength;
+    s += `<line x1="${ux}" y1="${pad-30}" x2="${ux}" y2="${pad+W+30}" stroke="#16a34a" stroke-width="12" stroke-dasharray="50 40"/>`; }
+  const by = pad + W + 120;
+  s += `<line x1="${pad}" y1="${by}" x2="${pad+L}" y2="${by}" stroke="#999" stroke-width="6"/>`;
+  for(let m=0; m<=Math.floor(L/1000); m++){ const mx = pad + m*1000;
+    s += `<line x1="${mx}" y1="${by-20}" x2="${mx}" y2="${by+20}" stroke="#999" stroke-width="6"/>`+
+         `<text x="${mx}" y="${by+160}" font-size="150" fill="#666" text-anchor="middle">${m}m</text>`; }
+  return `<svg viewBox="0 0 ${vbW} ${vbH}" xmlns="http://www.w3.org/2000/svg">${s}</svg>`;
+}
+// Druckansicht / PDF (via Browser-Druckdialog -> „Als PDF speichern")
+function buildPrintView(){
+  const layout = computeLayout();
+  const truck = layout.truck;
+  const active = orders.filter(o=>o.aktiv && o.anzahl>0);
+  const usedM = (Math.ceil(layout.usedLength/100)/10).toFixed(1);
+  const Lm = truck.l/1000;
+  const freeM = Math.max(0, Math.round((Lm - usedM)*10)/10).toFixed(1);
+  const totalPal = active.reduce((s,o)=>s+o.anzahl,0);
+  const over = layout.placements.filter(p=>p.overflow).reduce((s,p)=>s+(p.stack||1),0);
+  const d = new Date();
+  const dateStr = `${pad2(d.getDate())}.${pad2(d.getMonth()+1)}.${d.getFullYear()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  const fitTxt = active.length ? (layout.fits ? t('fitOk') : t('fitBad', over)) : "";
+  const dims = `${Lm.toFixed(2)} × ${(truck.w/1000).toFixed(2)} × ${(truck.h/1000).toFixed(2)} m`;
+  const th = [t('col_auftragsnummer'),t('col_kunde'),t('col_lieferdatum'),t('col_destCode'),t('col_anzahl'),
+              t('printDims'),t('col_reihenfolge'),t('printLmCol'),t('col_bemerkung')]
+              .map(x=>`<th>${esc(x)}</th>`).join("");
+  const rows = active.map(o=>{
+    return `<tr><td>${esc(o.auftragsnummer)}</td><td>${esc(o.kunde)}</td><td>${esc(o.lieferdatum)}</td>`+
+      `<td>${esc(o.destCode)}</td><td>${o.anzahl}</td><td>${o.laenge} × ${o.breite} × ${o.hoehe}</td>`+
+      `<td>${o.reihenfolge}</td><td>${orderLademeter(o,truck).toFixed(1)}</td>`+
+      `<td>${esc(o.bemerkung||"")}</td></tr>`;
+  }).join("");
+  const remarks = loadBemerkungen.trim()
+    ? `<div class="premarks"><b>${t('printRemarks')}:</b> ${esc(loadBemerkungen)}</div>` : "";
+  document.getElementById("printView").innerHTML =
+    `<h1>${t('printTitle')}</h1>`+
+    `<div class="pmeta"><b>${t('printDate')}:</b> ${dateStr} &nbsp;·&nbsp; <b>${t('truckLabel')}:</b> ${esc(currentTruck)} (${dims})<br>`+
+    `<b>${t('used')}</b> ${usedM} m &nbsp;·&nbsp; <b>${t('free')}</b> ${freeM} m &nbsp;·&nbsp; ${esc(t('palCount',totalPal))}`+
+    (fitTxt ? ` &nbsp;·&nbsp; ${esc(fitTxt)}` : "") + `</div>`+
+    `<div class="psvg">${buildPrintSvg(layout)}</div>`+
+    remarks +
+    `<h2>${t('printOrders')}</h2>`+
+    `<table><thead><tr>${th}</tr></thead><tbody>${rows}</tbody></table>`;
+}
+document.getElementById("btnPrint").addEventListener("click", ()=>{ buildPrintView(); window.print(); });
 
 // Import aus JSON
 const fileImport = document.getElementById("fileImport");
@@ -1048,14 +1393,17 @@ fileImport.addEventListener("change", e=>{
         laenge:+d.laenge||1200, breite:+d.breite||800, hoehe:+d.hoehe||1200,
         ladeart:["optimiert","lang","breit"].includes(d.ladeart)?d.ladeart:"optimiert",
         reihenfolge:Math.max(1,Math.min(99,+d.reihenfolge||1)),
-        stapelbar:!!d.stapelbar, aktiv:!!d.aktiv,
+        stapelbar:!!d.stapelbar, aktiv:!!d.aktiv, bemerkung:d.bemerkung||"",
         ...(d.color ? {color:d.color} : {}),
       }));
       if(data.truck && TRUCKS[data.truck]){ currentTruck = data.truck; truckSel.value = currentTruck; }
+      loadBemerkungen = (data && typeof data.bemerkungen==="string") ? data.bemerkungen : "";
+      updateNoteBtn();
       renderAll();
-      notify("ok", `<b>${orders.length}</b> Auftrag${orders.length===1?"":"e"} importiert.`, "", 4000);
+      const noteHint = loadBemerkungen.trim() ? t('withRemarks') : "";
+      notify("ok", t('imported', orders.length) + noteHint + ".", "", 4000);
     }catch(err){
-      notify("warn", "Import fehlgeschlagen.", String(err.message||err), 6000);
+      notify("warn", t('tImportFail'), String(err.message||err), 6000);
     }
   };
   reader.readAsText(file);
@@ -1067,20 +1415,20 @@ const resetLabel = document.getElementById("resetLabel");
 let resetArmed = false, resetTimer = null;
 function disarmReset(){
   resetArmed = false; clearTimeout(resetTimer);
-  btnReset.classList.remove("armed"); resetLabel.textContent = "Alle löschen / Reset";
+  btnReset.classList.remove("armed"); resetLabel.textContent = t('resetLabel');
 }
 btnReset.addEventListener("click", ()=>{
   if(orders.length===0){ disarmReset(); return; }   // nichts zu löschen
   if(!resetArmed){
     resetArmed = true;
     btnReset.classList.add("armed");
-    resetLabel.textContent = "Sicher? Nochmal klicken";
+    resetLabel.textContent = t('resetArmed');
     resetTimer = setTimeout(disarmReset, 4000);       // automatisch zurücksetzen
     return;
   }
   disarmReset();
   record();
-  orders = []; colorIdx = 0; renderAll();
+  orders = []; colorIdx = 0; loadBemerkungen = ""; updateNoteBtn(); renderAll();
 });
 // Klick woanders entschärft den Reset wieder
 document.addEventListener("click", e=>{ if(resetArmed && !btnReset.contains(e.target)) disarmReset(); });
@@ -1105,7 +1453,9 @@ list.addEventListener("change", e=>{
   const o = orders.find(x=>x.id==card.dataset.id); if(!o) return;
   const f = e.target.dataset.f;
   if(f==="stapelbar"){ record(); o.stapelbar = e.target.checked; recalc(); }
-  else if(f==="aktiv"){ record(); o.aktiv = e.target.checked; card.classList.toggle("inactive",!o.aktiv); recalc(); }
+  else if(f==="aktiv"){ record(); o.aktiv = e.target.checked;
+    if(hideInactive) renderList(); else card.classList.toggle("inactive",!o.aktiv);
+    recalc(); }
   else if(f==="ladeart"){ record(); o.ladeart = e.target.value; renderList(); recalc(); }
 });
 list.addEventListener("click", e=>{
@@ -1148,6 +1498,22 @@ list.addEventListener("click", e=>{
   if(e.target.closest("button[data-act]") || e.target.closest("[data-sort]")) return;
   const card = e.target.closest(".order"); if(card) triggerFlash(card.dataset.id);
 });
+// Klick auf das Farbquadrat -> Auftragsnummer in die Zwischenablage kopieren
+async function copyText(t){
+  try{ await navigator.clipboard.writeText(t); return true; }
+  catch(_){
+    try{ const ta=document.createElement("textarea"); ta.value=t; ta.style.position="fixed"; ta.style.opacity="0";
+      document.body.appendChild(ta); ta.focus(); ta.select(); const ok=document.execCommand("copy"); ta.remove(); return ok; }
+    catch(_){ return false; }
+  }
+}
+list.addEventListener("click", e=>{
+  const sw = e.target.closest(".order .swatch"); if(!sw) return;
+  const card = e.target.closest(".order"); const o = orders.find(x=>x.id==card.dataset.id); if(!o) return;
+  const nr = o.auftragsnummer || ("#"+o.id);
+  copyText(nr).then(ok => notify(ok?"ok":"warn",
+    ok ? t('copied', esc(nr)) : t('copyFail'), "", 2500));
+});
 
 function handleNumInput(input, o, f){
   if(f==="laenge"||f==="breite"||f==="hoehe"){
@@ -1183,7 +1549,7 @@ modal.addEventListener("click", e=>{ if(e.target===modal) modal.classList.remove
 function importText(txt){
   const {orders:parsed, skipped} = parseClipboard(txt);
   if(parsed.length===0 && skipped.length===0){
-    notify("warn", "Keine gültigen Auftragszeilen erkannt.");
+    notify("warn", t('tNoValid'));
     return;
   }
   // Duplikate nach Auftragsnummer aussortieren (bereits vorhandene + innerhalb des Imports)
@@ -1203,15 +1569,14 @@ function importText(txt){
   }
   // Hinweise zusammenstellen
   const parts = [];
-  if(duplicates.length) parts.push(`<b>${duplicates.length}</b> Duplikat${duplicates.length===1?"":"e"} übersprungen`);
-  if(skipped.length)    parts.push(`<b>${skipped.length}</b> unvollständige Zeile${skipped.length===1?"":"n"} ignoriert`);
-  const title = `<b>${toAdd.length}</b> Auftrag${toAdd.length===1?"":"e"} importiert`+
-                (parts.length ? " — " + parts.join(", ") : "") + ".";
+  if(duplicates.length) parts.push(t('dupSkipped', duplicates.length));
+  if(skipped.length)    parts.push(t('incomplIgnored', skipped.length));
+  const title = t('imported', toAdd.length) + (parts.length ? " — " + parts.join(", ") : "") + ".";
   let detail = "";
-  if(duplicates.length) detail += "Duplikate: " + duplicates.slice(0,8).join(", ") + (duplicates.length>8?" …":"") + "\n";
+  if(duplicates.length) detail += t('dupListLabel') + duplicates.slice(0,8).join(", ") + (duplicates.length>8?" …":"") + "\n";
   if(skipped.length){
     detail += skipped.slice(0,5).map(l => l.length>70 ? l.slice(0,70)+"…" : l).join("\n");
-    if(skipped.length>5) detail += `\n… und ${skipped.length-5} weitere`;
+    if(skipped.length>5) detail += "\n" + t('andMore', skipped.length-5);
   }
   const hasWarn = duplicates.length || skipped.length;
   notify(hasWarn ? "warn" : "ok", title, detail.trim(), 5000);  // nach 5 s automatisch ausblenden
@@ -1239,6 +1604,8 @@ document.addEventListener("keydown", e=>{
 });
 
 /* ============================ Start ============================ */
+applyStatic();
+updateNoteBtn();
 renderAll();
 </script>
 </body>
