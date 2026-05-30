@@ -120,23 +120,59 @@ function sortOrders(key){
     if(col.date) return (dateVal(a[key])-dateVal(b[key]))*dir;
     return String(a[key]??"").localeCompare(String(b[key]??""), "de", {numeric:true})*dir;
   });
-  renderList();
+  renderList(); recalc();   // recalc re-applies the per-row position band
 }
 
+// inline header controls (set all inactive / hide inactive) — placed between Aktiv and Bemerkung
+function headCtlHtml(){
+  const inact = orders.filter(o=>!o.active).length;
+  return `<span class="headctl">`+
+    `<button class="hbtn" data-listact="allInactive" title="${esc(t('titleDeselect'))}">`+
+      `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M16 9l-6 6-3-3"/></svg></button>`+
+    `<button class="hbtn ${hideInactive?'on':''}" data-listact="hideInactive" title="${esc(hideInactive?t('hideShow'):t('hideHide'))}">`+
+      `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20C5 20 1 12 1 12a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><path d="M1 1l22 22"/></svg>`+
+      (hideInactive && inact>0?`<span class="cnt">${inact}</span>`:``)+`</button>`+
+  `</span>`;
+}
+// always-present add / paste buttons at the end of the list
+function listFooterHtml(){
+  return `<div id="listFooter">`+
+    `<button data-listact="add"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>${t('btnAdd')}</button>`+
+    `<button data-listact="paste"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="3" width="8" height="4" rx="1"/><path d="M9 5H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3"/></svg>${t('btnPaste')}</button>`+
+  `</div>`;
+}
 function renderList(){
   const truck = TRUCKS[currentTruck];
   const list = document.getElementById("list");
-  if(orders.length===0){
-    list.innerHTML = `<div class="empty">${t('emptyList')}</div>`;
-    return;
+  // persistent skeleton: sticky head (sortable columns + inline controls + search) and the row body
+  if(!document.getElementById("listBody")){
+    list.innerHTML =
+      `<div id="listHead"><div id="headCols"></div>`+
+      `<div class="headsearch"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/></svg>`+
+      `<input id="search" type="search" placeholder="${esc(t('searchPh'))}" data-i18n-ph="searchPh" autocomplete="off"></div>`+
+      `</div><div id="listBody"></div>`;
   }
-  const head = `<div id="listHead"><span class="swatch" style="visibility:hidden"></span>` +
+  // column headers (sortable) + inline controls after the Aktiv column
+  document.getElementById("headCols").innerHTML =
+    `<span class="swatch" style="visibility:hidden"></span>` +
     SORT_COLS.map(c=>{
       const arrow = sortState.key===c.key ? `<span class="sortarrow">${sortState.dir>0?"▲":"▼"}</span>` : "";
-      return `<span class="${c.cls}" data-sort="${c.key}">${t("col_"+c.key)}${arrow}</span>`;
-    }).join("") + `</div>`;
-  const visible = hideInactive ? orders.filter(o=>o.active) : orders;
-  list.innerHTML = head + visible.map(o=>{
+      const span = `<span class="${c.cls}" data-sort="${c.key}">${t("col_"+c.key)}${arrow}</span>`;
+      return c.key==="active" ? span + headCtlHtml() : span;
+    }).join("");
+  const body = document.getElementById("listBody");
+  body.classList.toggle("empty-state", orders.length===0);
+  if(orders.length===0){
+    document.getElementById("listHead").style.display = "none";
+    body.innerHTML = listFooterHtml();
+    return;
+  }
+  document.getElementById("listHead").style.display = "";
+  const matches = o => !filterText ||
+    (`${o.orderNo} ${o.customer} ${o.destCode} ${o.deliveryDate} ${o.remark}`).toLowerCase().includes(filterText);
+  const visible = orders.filter(o => (hideInactive ? o.active : true) && matches(o));
+  const note = (visible.length===0) ? `<div class="empty">${t('noMatch')}</div>` : "";
+  body.innerHTML = note + visible.map(o=>{
     const stackPossible = 2*o.height <= truck.h;
     const lm = orderLoadMeters(o,truck).toFixed(1);
     return `<div class="order ${o.active?'':'inactive'}" style="--c:${o.color}" data-id="${o.id}">
@@ -173,7 +209,7 @@ function renderList(){
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M6 6l1 14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-14M10 11v6M14 11v6"/></svg>
       </button>
     </div>`;
-  }).join("");
+  }).join("") + listFooterHtml();
 }
 
 /* ============================ Recalc / render cycle ============================ */
@@ -185,7 +221,18 @@ function recalc(){
   renderTruck(layout);
   renderTotals(layout);
   renderInfo(layout);
-  // update load metres + stackable state per row (without re-rendering the list)
+  // x-extent (along truck length) per order, for the row "where on the truck" band
+  const ext = {};
+  for(const p of layout.placements){
+    const e = ext[p.order.id] || (ext[p.order.id] = {x0:Infinity, x1:-Infinity});
+    e.x0 = Math.min(e.x0, p.x); e.x1 = Math.max(e.x1, p.x + p.w);
+  }
+  // map a truck-length mm coordinate to a screen X pixel (via the SVG's transform)
+  const svgEl = document.getElementById("truckSvg");
+  const ctm = svgEl && svgEl.getScreenCTM ? svgEl.getScreenCTM() : null;
+  const toScreenX = ctm ? (xmm)=>{ const p = svgEl.createSVGPoint(); p.x = HOVER_PAD + xmm; p.y = 0; return p.matrixTransform(ctm).x; } : null;
+  const FEATHER = 14;   // px soft transition at the band edges
+  // update load metres + stackable state + position band per row (without re-rendering the list)
   document.querySelectorAll("#list .order").forEach(card=>{
     const o = orders.find(x=>x.id==card.dataset.id); if(!o) return;
     const lm = card.querySelector(".lmeter");
@@ -196,7 +243,20 @@ function recalc(){
       chk.disabled = !possible; chk.checked = o.stackable;
       chk.closest(".fld").classList.toggle("disabled", !possible);
     }
+    // pixel-accurate band: highlight the row exactly under the cargo's X range in the truck plan
+    const e = ext[o.id];
+    if(o.active && e && ctm){
+      const rect = card.getBoundingClientRect();
+      const lx = Math.max(0, Math.min(rect.width, toScreenX(e.x0) - rect.left));
+      const rx = Math.max(0, Math.min(rect.width, toScreenX(e.x1) - rect.left));
+      const base = "color-mix(in srgb, var(--c) 12%, var(--panel))";
+      const band = "color-mix(in srgb, var(--c) 52%, var(--panel))";
+      card.style.background =
+        `linear-gradient(90deg, ${base} ${Math.max(0,lx-FEATHER)}px, ${band} ${lx}px, ${band} ${rx}px, ${base} ${rx+FEATHER}px)`;
+    } else {
+      card.style.background = "";   // inactive / no placement -> CSS default
+    }
   });
-  updateHideLabel();
+  updateHeadCtl();
 }
 function renderAll(){ renderList(); recalc(); }

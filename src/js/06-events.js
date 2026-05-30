@@ -171,14 +171,12 @@ document.getElementById("truckSvg").addEventListener("click", e=>{
 });
 
 // toolbar
-document.getElementById("btnAdd").addEventListener("click", ()=>{
+// add a new order (used by the toolbar button and the footer button in the list)
+function addOrder(){
   record();
   const o = makeOrder({length:1200, width:800, height:1200, qty:1, sequence:1});
   orders.push(o);
-  if(hideInactive){   // new order is inactive -> turn filter off so it is visible
-    hideInactive = false;
-    btnHide.classList.remove("toggled");
-  }
+  if(hideInactive) hideInactive = false;   // new order is inactive -> turn filter off so it is visible
   renderAll();
   // scroll to the new order and focus the order number
   const row = document.querySelector(`.order[data-id="${o.id}"]`);
@@ -186,31 +184,29 @@ document.getElementById("btnAdd").addEventListener("click", ()=>{
     row.scrollIntoView({behavior:"smooth", block:"nearest"});
     const inp = row.querySelector('input[data-f="orderNo"]');
     if(inp){ inp.focus(); inp.select(); }
+    row.classList.remove("flash");
+    void row.offsetWidth;            // force reflow so the animation restarts
+    row.classList.add("flash");
+    setTimeout(()=> row.classList.remove("flash"), 1200);
   }
-});
+}
+document.getElementById("btnAdd").addEventListener("click", addOrder);
 document.getElementById("btnRefresh").addEventListener("click", renderAll);
 document.getElementById("btnUndo").addEventListener("click", undo);
 
-// set all orders inactive
-document.getElementById("btnDeselect").addEventListener("click", ()=>{
-  if(!orders.some(o=>o.active)) return;
-  record();
-  orders.forEach(o=> o.active = false);
-  renderAll();
-});
-
-// show/hide inactive orders in the list
-const btnHide = document.getElementById("btnHideInactive");
-function updateHideLabel(){
+// reflect the inline header controls' state (hide-inactive on/off + inactive count) without a full re-render
+function updateHeadCtl(){
   const inact = orders.filter(o=>!o.active).length;
-  const lbl = document.getElementById("hideLabel");
-  if(lbl) lbl.textContent = (hideInactive ? t('hideShow') : t('hideHide')) + (inact ? ` (${inact})` : "");
+  const hb = document.querySelector('#listHead [data-listact="hideInactive"]');
+  if(!hb) return;
+  hb.classList.toggle("on", hideInactive);
+  hb.title = hideInactive ? t('hideShow') : t('hideHide');
+  let cnt = hb.querySelector(".cnt");
+  if(hideInactive && inact>0){   // badge shows how many are currently hidden
+    if(!cnt){ cnt = document.createElement("span"); cnt.className = "cnt"; hb.appendChild(cnt); }
+    cnt.textContent = inact;
+  } else if(cnt){ cnt.remove(); }
 }
-btnHide.addEventListener("click", ()=>{
-  hideInactive = !hideInactive;
-  btnHide.classList.toggle("toggled", hideInactive);
-  renderAll();   // refresh list + totals (incl. hidden hint) + label
-});
 
 // load remarks note (view/edit)
 const noteModal = document.getElementById("noteModal");
@@ -238,8 +234,10 @@ function defaultExportName(){
 }
 function doExport(name){
   loadNote = expNote.value; updateNoteBtn();
+  const inclInactive = document.getElementById("expInclInactive").checked;
+  const exportable = inclInactive ? orders : orders.filter(o=>o.active);
   const data = { app:"lkw-planer", version:1, truck:currentTruck, note:loadNote,
-    orders: orders.map(o=>({ orderNo:o.orderNo, customer:o.customer, deliveryDate:o.deliveryDate,
+    orders: exportable.map(o=>({ orderNo:o.orderNo, customer:o.customer, deliveryDate:o.deliveryDate,
       destCode:o.destCode, qty:o.qty, length:o.length, width:o.width, height:o.height,
       loadMode:o.loadMode, sequence:o.sequence, stackable:o.stackable, active:o.active,
       remark:o.remark, color:o.color })) };
@@ -251,12 +249,13 @@ function doExport(name){
   a.href = url; a.download = fname;
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
-  notify("ok", t('exported', orders.length), fname, 4000);
+  notify("ok", t('exported', exportable.length), fname, 4000);
 }
 document.getElementById("btnExport").addEventListener("click", ()=>{
   if(orders.length===0){ notify("warn", t('tNoExport')); return; }
   nameInput.value = defaultExportName();
   expNote.value = loadNote;
+  document.getElementById("expInclInactive").checked = false;   // default: active orders only
   nameModal.classList.add("open");
   nameInput.focus(); nameInput.select();
 });
@@ -304,7 +303,25 @@ function buildPrintSvg(layout){
          `<text x="${mx}" y="${by+160}" font-size="150" fill="#666" text-anchor="middle">${m}m</text>`; }
   return `<svg viewBox="0 0 ${vbW} ${vbH}" xmlns="http://www.w3.org/2000/svg">${s}</svg>`;
 }
-// print view / PDF (via the browser print dialog -> "Save as PDF")
+// print stylesheet — lives inside the print iframe (default landscape, wider remark column)
+const PRINT_CSS = `
+  *{box-sizing:border-box}
+  /* @page margin:0 leaves no room for the browser's header/footer (URL/date) -> the body padding becomes the visual margin */
+  body{margin:0;color:#000;background:#fff;padding:10mm 12mm;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;}
+  h1{font-size:18px;margin:0 0 4px;}
+  h2{font-size:13px;margin:12px 0 5px;}
+  .pmeta{font-size:11.5px;line-height:1.5;margin-bottom:8px;}
+  .psvg{margin-bottom:8px;overflow:hidden;}
+  .psvg svg{width:100%;height:auto;display:block;}
+  .premarks{margin:8px 0;padding:6px 8px;border:1px solid #ccc;border-radius:6px;white-space:pre-wrap;font-size:11.5px;}
+  table{width:100%;border-collapse:collapse;font-size:10.5px;table-layout:fixed;}
+  th,td{border:1px solid #bbb;padding:3px 5px;text-align:left;vertical-align:top;word-wrap:break-word;}
+  th{background:#eee;}
+  th:last-child,td:last-child{width:32%;}
+  .pal-label{font-weight:700;fill:#11203a;paint-order:stroke;stroke:rgba(255,255,255,.75);stroke-width:60px;}
+  @page{size:landscape;margin:0;}
+`;
+// print view / PDF: rendered in a hidden about:blank iframe so the PDF footer carries no file path
 function buildPrintView(){
   const layout = computeLayout();
   const truck = layout.truck;
@@ -329,8 +346,7 @@ function buildPrintView(){
   }).join("");
   const remarks = loadNote.trim()
     ? `<div class="premarks"><b>${t('printRemarks')}:</b> ${esc(loadNote)}</div>` : "";
-  document.getElementById("printView").innerHTML =
-    `<h1>${t('printTitle')}</h1>`+
+  return `<h1>${t('printTitle')}</h1>`+
     `<div class="pmeta"><b>${t('printDate')}:</b> ${dateStr} &nbsp;·&nbsp; <b>${t('truckLabel')}:</b> ${esc(currentTruck)} (${dims})<br>`+
     `<b>${t('used')}</b> ${usedM} m &nbsp;·&nbsp; <b>${t('free')}</b> ${freeM} m &nbsp;·&nbsp; ${esc(t('palCount',totalPal))}`+
     (fitTxt ? ` &nbsp;·&nbsp; ${esc(fitTxt)}` : "") + `</div>`+
@@ -339,7 +355,30 @@ function buildPrintView(){
     `<h2>${t('printOrders')}</h2>`+
     `<table><thead><tr>${th}</tr></thead><tbody>${rows}</tbody></table>`;
 }
-document.getElementById("btnPrint").addEventListener("click", ()=>{ buildPrintView(); window.print(); });
+// print the load: render the HTML in a separate about:blank window so the PDF footer has no file path.
+// (Printing a hidden iframe does NOT work — Chrome puts the parent document's file:// path in the footer.)
+function printDoc(bodyHtml, title){
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>${PRINT_CSS}</style></head><body>${bodyHtml}</body></html>`;
+  const w = window.open("", "_blank", "width=1100,height=800");
+  if(w){
+    w.document.open(); w.document.write(html); w.document.close();
+    w.focus();
+    w.onafterprint = ()=> w.close();
+    // give the inline SVG layout a tick before opening the print dialog
+    setTimeout(()=>{ try{ w.print(); }catch(_){} }, 250);
+    return;
+  }
+  // popup blocked -> fall back to a hidden iframe (footer may then show the file path)
+  const old = document.getElementById("printFrame"); if(old) old.remove();
+  const ifr = document.createElement("iframe");
+  ifr.id = "printFrame";
+  ifr.style.cssText = "position:fixed;left:-9999px;top:0;width:0;height:0;border:0;";
+  document.body.appendChild(ifr);
+  const doc = ifr.contentWindow.document;
+  doc.open(); doc.write(html); doc.close();
+  setTimeout(()=>{ try{ ifr.contentWindow.focus(); ifr.contentWindow.print(); }catch(_){} setTimeout(()=> ifr.remove(), 1500); }, 150);
+}
+document.getElementById("btnPrint").addEventListener("click", ()=>{ printDoc(buildPrintView(), t('printTitle')); });
 
 // import from JSON
 const fileImport = document.getElementById("fileImport");
@@ -456,8 +495,9 @@ function triggerFlash(oid){
 }
 // Tab -> select content; focus into a row -> flash its pallets
 list.addEventListener("focusin", e=>{
-  if(e.target.tagName==="INPUT" && e.target.type!=="checkbox"){ editRecorded = false; e.target.select(); }
-  const card = e.target.closest(".order"); if(card) triggerFlash(card.dataset.id);
+  const card = e.target.closest(".order");
+  if(card && e.target.tagName==="INPUT" && e.target.type!=="checkbox"){ editRecorded = false; e.target.select(); }
+  if(card) triggerFlash(card.dataset.id);
 });
 // click anywhere in the row (except buttons/header) -> flash pallets
 list.addEventListener("click", e=>{
@@ -501,13 +541,15 @@ function handleNumInput(input, o, f){
 /* ---- clipboard ---- */
 const modal = document.getElementById("modal");
 const pasteArea = document.getElementById("pasteArea");
-document.getElementById("btnPaste").addEventListener("click", async ()=>{
+// import from clipboard (used by the toolbar button and the footer button in the list)
+async function openPaste(){
   try{
     const txt = await navigator.clipboard.readText();
     if(txt && txt.trim()){ importText(txt); return; }
   }catch(_){ /* permission denied -> fallback dialog */ }
   pasteArea.value=""; modal.classList.add("open"); pasteArea.focus();
-});
+}
+document.getElementById("btnPaste").addEventListener("click", openPaste);
 document.getElementById("pasteCancel").addEventListener("click", ()=>modal.classList.remove("open"));
 document.getElementById("pasteOk").addEventListener("click", ()=>{ importText(pasteArea.value); modal.classList.remove("open"); });
 modal.addEventListener("click", e=>{ if(e.target===modal) modal.classList.remove("open"); });
@@ -569,7 +611,37 @@ document.addEventListener("keydown", e=>{
   }
 });
 
+// list-level controls outside the order rows: header icons + footer buttons (event delegation)
+list.addEventListener("click", e=>{
+  const b = e.target.closest("[data-listact]"); if(!b) return;
+  switch(b.dataset.listact){
+    case "allInactive":
+      if(!orders.some(o=>o.active)) return;
+      record(); orders.forEach(o=> o.active = false); renderAll(); break;
+    case "hideInactive":
+      hideInactive = !hideInactive; renderAll(); break;
+    case "add":   addOrder(); break;
+    case "paste": openPaste(); break;
+  }
+});
+
+// text filter for the order list (rows only; the truck graphic shows all active orders).
+// The search box lives in the persistent list header, so it is wired once after the first render.
+function wireSearch(){
+  const s = document.getElementById("search"); if(!s || s.dataset.wired) return;
+  s.dataset.wired = "1";
+  s.addEventListener("input", e=>{
+    filterText = e.target.value.trim().toLowerCase();
+    renderList(); recalc();   // recalc re-applies per-row bands for the now-visible rows
+  });
+}
+
+// re-align the per-row position bands when the truck graphic rescales (debounced)
+let resizeTimer = null;
+window.addEventListener("resize", ()=>{ clearTimeout(resizeTimer); resizeTimer = setTimeout(recalc, 150); });
+
 /* ============================ Start ============================ */
 applyStatic();
 updateNoteBtn();
 renderAll();
+wireSearch();   // the search box lives in the (persistent) list header created by renderAll

@@ -9,6 +9,7 @@ let uid = 1;
 let orders = [];
 let loadNote = "";   // load-wide remarks (export/import + note button)
 let hideInactive = false;   // hide inactive orders in the list
+let filterText = "";        // text filter for the order list (lower-cased)
 
 function makeOrder(data={}){
   return Object.assign({

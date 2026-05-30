@@ -27,6 +27,7 @@ const I18N = {
     btnCancel:"Abbrechen", btnApply:"Übernehmen", btnSave:"Speichern", btnClose:"Schließen",
     expTitle:"Ladung exportieren", expFileLabel:"Dateiname für die JSON-Datei:",
     expNoteLabel:"Bemerkungen (optional, werden in der JSON gespeichert):",
+    expInclInactive:"Inaktive Aufträge einbeziehen",
     noteTitle:"Bemerkungen zur Ladung", noteDesc:"Frei eingebbarer Text — wird beim Export in die JSON übernommen und beim Import wieder geladen.",
     setTitle:"Einstellungen", setTrucks:"LKW-Typen", setTrucksUnit:"(Maße in Metern)",
     th_name:"Name", th_l:"Länge", th_w:"Breite", th_h:"Höhe", ph_newtype:"Neuer Typ", ph_w:"B",
@@ -43,6 +44,7 @@ const I18N = {
     copied:nr=>`Auftragsnummer <b>${nr}</b> kopiert`, copyFail:"Kopieren nicht möglich",
     titlePrint:"Drucken / als PDF speichern", printTitle:"LKW-Beladungsplan", printDate:"Datum",
     printDims:"L×B×H mm", printLmCol:"Lademeter", printRemarks:"Bemerkungen", printOrders:"Aktive Aufträge",
+    searchPh:"Suchen…", noMatch:"Keine Treffer.",
   },
   en: {
     truckLabel:"Truck", btnAdd:"New order", btnPaste:"From clipboard",
@@ -71,6 +73,7 @@ const I18N = {
     btnCancel:"Cancel", btnApply:"Apply", btnSave:"Save", btnClose:"Close",
     expTitle:"Export load", expFileLabel:"File name for the JSON file:",
     expNoteLabel:"Remarks (optional, stored in the JSON):",
+    expInclInactive:"Include inactive orders",
     noteTitle:"Load remarks", noteDesc:"Free text — included in the JSON on export and reloaded on import.",
     setTitle:"Settings", setTrucks:"Truck types", setTrucksUnit:"(dimensions in meters)",
     th_name:"Name", th_l:"Length", th_w:"Width", th_h:"Height", ph_newtype:"New type", ph_w:"W",
@@ -87,6 +90,7 @@ const I18N = {
     copied:nr=>`Order number <b>${nr}</b> copied`, copyFail:"Copy failed",
     titlePrint:"Print / save as PDF", printTitle:"Truck loading plan", printDate:"Date",
     printDims:"L×W×H mm", printLmCol:"Load m", printRemarks:"Remarks", printOrders:"Active orders",
+    searchPh:"Search…", noMatch:"No matches.",
   },
   hu: {
     truckLabel:"Kamion", btnAdd:"Új megbízás", btnPaste:"Vágólapról",
@@ -115,6 +119,7 @@ const I18N = {
     btnCancel:"Mégse", btnApply:"Alkalmaz", btnSave:"Mentés", btnClose:"Bezárás",
     expTitle:"Rakomány exportálása", expFileLabel:"A JSON-fájl neve:",
     expNoteLabel:"Megjegyzések (opcionális, a JSON-ba mentve):",
+    expInclInactive:"Inaktív megbízások is",
     noteTitle:"Megjegyzések a rakományhoz", noteDesc:"Szabad szöveg — exportkor a JSON-ba kerül, importkor visszatöltődik.",
     setTitle:"Beállítások", setTrucks:"Kamiontípusok", setTrucksUnit:"(méretek méterben)",
     th_name:"Név", th_l:"Hossz", th_w:"Szélesség", th_h:"Magasság", ph_newtype:"Új típus", ph_w:"Sz",
@@ -131,6 +136,7 @@ const I18N = {
     copied:nr=>`Megbízásszám <b>${nr}</b> másolva`, copyFail:"A másolás nem sikerült",
     titlePrint:"Nyomtatás / mentés PDF-be", printTitle:"Kamion rakományterv", printDate:"Dátum",
     printDims:"H×Sz×M mm", printLmCol:"Rakodóméter", printRemarks:"Megjegyzések", printOrders:"Aktív megbízások",
+    searchPh:"Keresés…", noMatch:"Nincs találat.",
   },
 };
 function t(key, ...args){

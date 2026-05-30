@@ -112,6 +112,29 @@ function lanesPlan(o, W, ground){
 //  mode "rows":  cross-rows as a (rigid) block; also for fixed load mode long/wide.
 function packGround(o, W, ground){
   if(ground<=0) return {mode:"none"};
+  // fixed orientation (long/wide): place as independent lanes so each lane slides into
+  // skyline steps and interlocks with neighbours (avoids holes from a rigid block).
+  if(o.loadMode==="long" || o.loadMode==="wide"){
+    const wide = (o.loadMode==="wide");
+    const laneW = wide ? o.length : o.width;   // strip width across the truck (Y)
+    const unit  = wide ? o.width  : o.length;  // pallet depth along the truck (X)
+    const nLanes = Math.max(1, Math.floor(W / laneW));
+    const counts = new Array(nLanes).fill(0);
+    for(let k=0; k<ground; k++){                // balance pallets -> shortest lane next
+      let bi = 0;
+      for(let i=1;i<nLanes;i++) if((counts[i]+1)*unit < (counts[bi]+1)*unit) bi = i;
+      counts[bi]++;
+    }
+    const strips = []; let y = 0;
+    for(let i=0;i<nLanes;i++){
+      if(counts[i]===0) continue;
+      const units = [];
+      for(let k=0;k<counts[i];k++) units.push({w:unit, h:laneW});
+      strips.push({y, h:laneW, units});
+      y += laneW;
+    }
+    return {mode:"lanes", strips};
+  }
   let rows = planRows(o, W, ground);
   if(o.loadMode!=="long" && o.loadMode!=="wide"){
     const rowsLen = rows.reduce((s,r)=>s+r.depth, 0);
@@ -269,17 +292,55 @@ function computeLayout(){
   const cmps = [
     null,                                                  // original (id)
     (a,b)=> gnd(b)*b.length*b.width - gnd(a)*a.length*a.width, // largest area first
+    (a,b)=> gnd(a)*a.length*a.width - gnd(b)*b.length*b.width, // smallest area first (small order fills the front step)
     (a,b)=> gnd(b) - gnd(a),                               // most slots first
+    (a,b)=> gnd(a) - gnd(b),                               // fewest slots first
     (a,b)=> Math.max(b.length,b.width) - Math.max(a.length,a.width), // longest pallet first
     (a,b)=> b.width - a.width,                           // widest first
   ];
-  let best = null;
-  for(const cmp of cmps){
-    const r = layoutSequence(orderByGroups(active, cmp, truck), truck);
-    if(!best || r.usedLength < best.usedLength - 0.01) best = r;
+  // count of wide (crosswise) placements -> secondary objective ("prefer wide")
+  const breitCount = pl => pl.reduce((s,p)=> s + (Math.abs(p.w - p.order.width) < 0.01 ? 1 : 0), 0);
+  // evaluate an orientation assignment (order id -> forced loadMode) across all candidate orderings.
+  // PRIMARY objective: shortest total length. SECONDARY (tie): most wide placements.
+  function evalAssign(modeOf){
+    const view = active.map(o => (modeOf[o.id] && modeOf[o.id]!==o.loadMode)
+      ? Object.assign({}, o, {loadMode:modeOf[o.id]}) : o);
+    let best = null;
+    for(const cmp of cmps){
+      const r = layoutSequence(orderByGroups(view, cmp, truck), truck);
+      const breit = breitCount(r.placements);
+      if(!best || r.usedLength < best.usedLength-0.01
+         || (Math.abs(r.usedLength-best.usedLength)<0.01 && breit > best.breit))
+        best = {usedLength:r.usedLength, breit, placements:r.placements};
+    }
+    return best;
   }
-  const placements = best ? best.placements : [];
-  const usedLength = best ? best.usedLength : 0;
+  const better = (a,b)=> a.usedLength < b.usedLength-0.01
+    || (Math.abs(a.usedLength-b.usedLength)<0.01 && a.breit > b.breit);
+
+  // optimized orders may be loaded long or wide -> search the orientation that keeps the
+  // TOTAL length shortest (hill-climbing); wide is only kept when it does not lengthen the load.
+  const flippable = active.filter(o=> o.loadMode!=="long" && o.loadMode!=="wide").map(o=>o.id);
+  const modeOf = {};                       // empty -> "optimized" (auto) for every order
+  let cur = evalAssign(modeOf);
+  if(flippable.length && flippable.length <= 16){
+    let improved = true, guard = 0;
+    while(improved && guard++ < 8){
+      improved = false;
+      for(const id of flippable){
+        const save = modeOf[id];
+        for(const m of [undefined, "long", "wide"]){   // undefined = back to auto
+          if(m===save) continue;
+          modeOf[id] = m;
+          const cand = evalAssign(modeOf);
+          if(better(cand, cur)){ cur = cand; improved = true; }
+          else modeOf[id] = save;
+        }
+      }
+    }
+  }
+  const placements = cur ? cur.placements : [];
+  const usedLength = cur ? cur.usedLength : 0;
   placements.forEach(p => p.overflow = (p.x + p.w) > L + 0.01);
   const fits = usedLength <= L + 0.01;
   return {placements, usedLength, fits, truck};
