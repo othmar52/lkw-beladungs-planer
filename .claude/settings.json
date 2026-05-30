@@ -10,7 +10,10 @@
       "Bash(git --no-pager branch)",
       "Bash(git --no-pager remote -v)",
       "Bash(GIT_SSH_COMMAND='ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new' git push -u origin main --follow-tags)",
-      "Bash(GIT_SSH_COMMAND='ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new' git push)"
+      "Bash(GIT_SSH_COMMAND='ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new' git push)",
+      "Bash(git filter-repo *)",
+      "Bash(python3 -c \"import git_filter_repo\")",
+      "Bash(git --no-pager log --oneline -3)"
     ]
   }
 }
