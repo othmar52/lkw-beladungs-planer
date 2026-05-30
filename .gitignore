@@ -1,2 +1,7 @@
 # Claude Code lokale Einstellungen (maschinenspezifisch)
 .claude/settings.local.json
+
+# Interne Quell-/Spezifikationsdaten (nicht ins öffentliche Repo)
+LKW Planner/Plandaten.png
+LKW Planner/Plandaten.txt
+LKW Planner/Prompt.txt
