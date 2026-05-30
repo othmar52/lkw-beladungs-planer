@@ -13,7 +13,18 @@
       "Bash(GIT_SSH_COMMAND='ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new' git push)",
       "Bash(git filter-repo *)",
       "Bash(python3 -c \"import git_filter_repo\")",
-      "Bash(git --no-pager log --oneline -3)"
+      "Bash(git --no-pager log --oneline -3)",
+      "Bash(FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch --force --index-filter 'git rm -r --cached --ignore-unmatch \"LKW Planner/Plandaten.png\" \"LKW Planner/Plandaten.txt\" \"LKW Planner/Prompt.txt\"' --prune-empty --tag-name-filter cat -- --all)",
+      "Bash(git checkout *)",
+      "Bash(git --no-pager log --all --oneline -- \"LKW Planner/Plandaten.txt\" \"LKW Planner/Plandaten.png\" \"LKW Planner/Prompt.txt\")",
+      "Bash(xargs -n1 -r git update-ref -d)",
+      "Bash(git reflog *)",
+      "Bash(git gc *)",
+      "Bash(git --no-pager ls-files)",
+      "Bash(git --no-pager log --oneline --all)",
+      "Bash(git --no-pager show-ref --tags)",
+      "Bash(GIT_SSH_COMMAND='ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new' git push --force --tags origin main)",
+      "Bash(grep -n '</head>\\\\|<body>\\\\|<style>\\\\|</style>\\\\|<script>\\\\|</script>\\\\|/\\\\* =\\\\{6,\\\\}' lkw-planer.html)"
     ]
   }
 }

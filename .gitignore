@@ -5,3 +5,6 @@
 LKW Planner/Plandaten.png
 LKW Planner/Plandaten.txt
 LKW Planner/Prompt.txt
+
+# Build-Ausgabe (nur als Release-Asset, nicht im Repo)
+dist/

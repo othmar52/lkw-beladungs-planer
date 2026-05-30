@@ -1,18 +1,30 @@
 # LKW Planner — Handover
 
-Stand: 2026-05-29
+Stand: 2026-05-30
 
 ## Zweck
-Single-File-HTML-Tool zur **Beladungsplanung von LKW mit Paletten**. Topdown-Ansicht des
-LKW (oben, fix), darunter eine sortier-/editierbare Auftragsliste. Keine Installation,
-kein Build, keine externen Libs — einfach [LKW Planner/lkw-planer.html](LKW%20Planner/lkw-planer.html)
-im Browser öffnen.
+Tool zur **Beladungsplanung von LKW mit Paletten**. Topdown-Ansicht des LKW (oben, fix),
+darunter eine sortier-/editierbare Auftragsliste. Das Endprodukt ist **eine einzige HTML-Datei**
+(HTML+CSS+JS inline, keine externen Libs) — sie wird aus den Quellen in `src/` **gebaut**.
 
-## Dateien
-- `LKW Planner/lkw-planer.html` — **die gesamte App** (HTML + CSS + JS in einer Datei).
-- `LKW Planner/Prompt.txt` — ursprüngliche Spezifikation des Auftraggebers.
-- `LKW Planner/Plandaten.txt` / `Plandaten.png` — Beispiel-Report aus dem Quellsystem (Import-Format).
-- `IDEAS.md` — offene Feature-Ideen.
+## Projektstruktur & Build
+- `src/index.html` — HTML-Gerüst mit den Platzhaltern `/* @@STYLES@@ */` und `/* @@SCRIPT@@ */`
+  (Body-Markup, Favicon-Data-URI und Toolbar-Logo stehen hier inline).
+- `src/styles.css` — gesamtes CSS.
+- `src/js/01-config.js … 06-events.js` — JS in Modulen; werden **alphabetisch** konkateniert
+  (Reihenfolge = ursprüngliche Ausführungsreihenfolge: config → i18n → model → packing → render → events).
+  Es ist EIN gemeinsamer Scope (kein ESM/import) — Reihenfolge daher wichtig.
+- `build.mjs` — Node, **ohne Dependencies**: fügt CSS + konkatenierte JS-Module in `index.html` ein →
+  **`dist/lkw-planer.html`**. Aufruf: `node build.mjs`.
+- `dist/` ist **gitignored** (nur als Release-Asset, nicht im Repo).
+- `.github/workflows/release.yml` — bei Tag-Push `v*` wird gebaut und `dist/lkw-planer.html`
+  als **Release-Asset** angehängt (via `gh` CLI). → unter „Releases" downloadbar.
+
+**Workflow zum Entwickeln:** Quellen in `src/` ändern → `node build.mjs` → `dist/lkw-planer.html`
+im Browser öffnen. **Neuen Release veröffentlichen:** `git tag vX.Y && git push --tags`.
+
+Weitere Dateien: `IDEAS.md` (Ideen), `HANDOVER.md` (dieses Dokument).
+Nur lokal (gitignored): `LKW Planner/Prompt.txt`, `Plandaten.txt/.png` (interne Spezifikation/Beispieldaten).
 
 ## Datenmodell
 Globale `orders[]`, jeder Auftrag (`makeOrder`):

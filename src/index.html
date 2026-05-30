@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LKW Planer</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%230e1318'/><rect x='4' y='7' width='24' height='18' rx='2.5' fill='%23171f29' stroke='%233b82f6' stroke-width='1.6'/><rect x='6.5' y='9.5' width='5.5' height='5.5' rx='1' fill='%233b82f6'/><rect x='12.5' y='9.5' width='5.5' height='5.5' rx='1' fill='%2316a34a'/><rect x='6.5' y='15.5' width='5.5' height='5.5' rx='1' fill='%23d97706'/><rect x='12.5' y='15.5' width='5.5' height='5.5' rx='1' fill='%23db2777'/><rect x='19' y='9.5' width='6.5' height='11.5' rx='1' fill='%230891b2'/></svg>">
+<style>/* @@STYLES@@ */</style>
+</head>
+<body>
+
+<div id="top">
+  <div id="toolbar">
+    <svg class="logo" width="30" height="30" viewBox="0 0 32 32" aria-label="LKW Planer">
+      <rect width="32" height="32" rx="6" fill="#0e1318"/>
+      <rect x="4" y="7" width="24" height="18" rx="2.5" fill="#171f29" stroke="#3b82f6" stroke-width="1.6"/>
+      <rect x="6.5" y="9.5" width="5.5" height="5.5" rx="1" fill="#3b82f6"/>
+      <rect x="12.5" y="9.5" width="5.5" height="5.5" rx="1" fill="#16a34a"/>
+      <rect x="6.5" y="15.5" width="5.5" height="5.5" rx="1" fill="#d97706"/>
+      <rect x="12.5" y="15.5" width="5.5" height="5.5" rx="1" fill="#db2777"/>
+      <rect x="19" y="9.5" width="6.5" height="11.5" rx="1" fill="#0891b2"/>
+    </svg>
+    <label for="truckSel" data-i18n="truckLabel">LKW</label>
+    <select id="truckSel"></select>
+    <button id="btnAdd"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg><span data-i18n="btnAdd">Neuer Auftrag</span></button>
+    <button id="btnPaste"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="3" width="8" height="4" rx="1"/><path d="M9 5H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3"/></svg><span data-i18n="btnPaste">Aus Zwischenablage</span></button>
+    <button id="btnRefresh" class="icon" title="Aktualisieren" data-i18n-title="titleRefresh">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+    </button>
+    <button id="btnUndo" class="icon" title="Rückgängig (Strg+Z)" data-i18n-title="titleUndo" disabled>
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a6 6 0 0 1 0 12H9"/></svg>
+    </button>
+    <button id="btnDeselect" title="Alle Aufträge auf inaktiv setzen" data-i18n-title="titleDeselect"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M16 9l-6 6-3-3"/></svg><span data-i18n="btnDeselect">Alle inaktiv</span></button>
+    <button id="btnHideInactive" title="Inaktive Aufträge in der Liste aus-/einblenden" data-i18n-title="titleHide"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20C5 20 1 12 1 12a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><path d="M1 1l22 22"/></svg><span id="hideLabel">Inaktive ausblenden</span></button>
+    <div class="spacer"></div>
+    <button id="btnExport" class="icon" title="Ladung als JSON exportieren" data-i18n-title="titleExport">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M8 11l4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+    </button>
+    <button id="btnImport" class="icon" title="Ladung aus JSON importieren" data-i18n-title="titleImport">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15V3M8 7l4-4 4 4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+    </button>
+    <input type="file" id="fileImport" accept="application/json,.json" style="display:none">
+    <button id="btnPrint" class="icon" title="Drucken / als PDF speichern" data-i18n-title="titlePrint">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z"/></svg>
+    </button>
+    <button id="btnNote" class="icon" title="Bemerkungen zur Ladung" data-i18n-title="titleNote">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16v11H8l-4 4V5z"/><path d="M8 9h8M8 12.5h5"/></svg>
+    </button>
+    <button id="btnSettings" class="icon" title="Einstellungen (LKW-Typen, Anzeige)" data-i18n-title="titleSettings">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+    <button id="btnReset" class="ghostdanger"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M6 6l1 14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-14"/></svg><span id="resetLabel" data-i18n="resetLabel">Alle löschen / Reset</span></button>
+  </div>
+  <div id="stageWrap">
+    <div id="stage">
+      <div id="truckBox"><svg id="truckSvg" preserveAspectRatio="xMidYMid meet"></svg></div>
+      <div id="totals"></div>
+    </div>
+    <div id="infoPanel">
+      <div id="infoHead">Ladeinfo</div>
+      <div id="fitMsg" class="fit-ok">–</div>
+      <div id="infoBody"></div>
+    </div>
+  </div>
+</div>
+
+<div id="list"></div>
+
+<div id="toasts"></div>
+<div id="palTip"></div>
+<div id="printView"></div>
+
+<div id="modal">
+  <div class="modalbox">
+    <h3 data-i18n="pasteTitle">Aufträge einfügen</h3>
+    <p data-i18n="pasteDesc">Inhalt aus dem Planungssystem hier einfügen (STRG+V) und auf „Übernehmen“ klicken.</p>
+    <textarea id="pasteArea" placeholder="1  *3911510  Landkost  25.03.26 AT43 9013 01 11  16  5  1200 1059 2000&#10;..."></textarea>
+    <div class="modalbtns">
+      <button id="pasteCancel" data-i18n="btnCancel">Abbrechen</button>
+      <button id="pasteOk" class="primary" data-i18n="btnApply">Übernehmen</button>
+    </div>
+  </div>
+</div>
+
+<div id="nameModal">
+  <div class="modalbox">
+    <h3 data-i18n="expTitle">Ladung exportieren</h3>
+    <p data-i18n="expFileLabel">Dateiname für die JSON-Datei:</p>
+    <input id="nameInput" class="txt" autocomplete="off">
+    <p style="margin-top:12px" data-i18n="expNoteLabel">Bemerkungen (optional, werden in der JSON gespeichert):</p>
+    <textarea id="expNote" style="width:100%;height:90px;resize:vertical;font-family:inherit;border:1px solid var(--line);border-radius:8px;padding:9px;background:var(--input);color:var(--text);font-size:13px;"></textarea>
+    <div class="modalbtns">
+      <button id="nameCancel" data-i18n="btnCancel">Abbrechen</button>
+      <button id="nameOk" class="primary" data-i18n="btnSave">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<div id="noteModal">
+  <div class="modalbox">
+    <h3 data-i18n="noteTitle">Bemerkungen zur Ladung</h3>
+    <p data-i18n="noteDesc">Frei eingebbarer Text — wird beim Export in die JSON übernommen und beim Import wieder geladen.</p>
+    <textarea id="noteArea" style="width:100%;height:160px;resize:vertical;font-family:inherit;border:1px solid var(--line);border-radius:8px;padding:10px;background:var(--input);color:var(--text);font-size:13px;"></textarea>
+    <div class="modalbtns">
+      <button id="noteCancel" data-i18n="btnCancel">Abbrechen</button>
+      <button id="noteOk" class="primary" data-i18n="btnApply">Übernehmen</button>
+    </div>
+  </div>
+</div>
+
+<div id="settingsModal">
+  <div class="modalbox settingsbox">
+    <h3 data-i18n="setTitle">Einstellungen</h3>
+    <h4><span data-i18n="setTrucks">LKW-Typen</span> <span style="text-transform:none;font-weight:600" data-i18n="setTrucksUnit">(Maße in Metern)</span></h4>
+    <div class="thead"><span class="tname" data-i18n="th_name">Name</span><span class="tdim" data-i18n="th_l">Länge</span><span class="tdim" data-i18n="th_w">Breite</span><span class="tdim" data-i18n="th_h">Höhe</span><span style="width:34px"></span></div>
+    <div id="truckTable"></div>
+    <div class="addtruck">
+      <input id="ntName" class="txt tname" placeholder="Neuer Typ" data-i18n-ph="ph_newtype">
+      <input id="ntL" class="txt tdim" placeholder="L" inputmode="decimal">
+      <input id="ntW" class="txt tdim" placeholder="B" inputmode="decimal" data-i18n-ph="ph_w">
+      <input id="ntH" class="txt tdim" placeholder="H" inputmode="decimal">
+      <button id="ntAdd" class="primary" title="LKW-Typ hinzufügen">+</button>
+    </div>
+    <h4 data-i18n="setLanguage">Sprache / Language</h4>
+    <select id="langSel" class="txt" style="width:auto"><option value="de">Deutsch</option><option value="en">English</option><option value="hu">Magyar</option></select>
+    <h4 data-i18n="setDisplay">Anzeige</h4>
+    <label class="chk"><input type="checkbox" id="setCrosshair"> <span data-i18n="setCrosshair">Fadenkreuz / Distanzanzeige beim Überfahren freier Lücken</span></label>
+    <div class="modalbtns">
+      <button id="setResetTrucks" class="ghostdanger" data-i18n="setResetTrucks">Standard-LKW wiederherstellen</button>
+      <button id="settingsClose" class="primary" data-i18n="btnClose">Schließen</button>
+    </div>
+  </div>
+</div>
+
+<script>/* @@SCRIPT@@ */</script>
+</body>
+</html>

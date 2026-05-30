@@ -1,0 +1,35 @@
+name: Build & Release
+
+# Bei jedem Versions-Tag (v…) wird die Einzeldatei gebaut und als Release-Asset angehängt.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build dist/lkw-planer.html
+        run: node build.mjs
+
+      - name: Release anlegen / Asset hochladen
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/lkw-planer.html --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/lkw-planer.html \
+              --title "$GITHUB_REF_NAME" \
+              --notes "Automatischer Build der Einzeldatei **lkw-planer.html** – einfach herunterladen und im Browser öffnen."
+          fi
