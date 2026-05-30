@@ -26,6 +26,7 @@
   #toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;
            padding:10px 14px;border-bottom:1px solid var(--line2);}
   #toolbar label{font-weight:600;color:var(--muted);}
+  #toolbar .logo{flex:none;margin-right:4px;}
   select,input,button{font-family:inherit;font-size:13px;}
   select,.txt{
     border:1px solid var(--line);border-radius:7px;padding:6px 9px;background:var(--input);color:var(--text);
@@ -187,6 +188,15 @@
 
 <div id="top">
   <div id="toolbar">
+    <svg class="logo" width="30" height="30" viewBox="0 0 32 32" aria-label="LKW Planer">
+      <rect width="32" height="32" rx="6" fill="#0e1318"/>
+      <rect x="4" y="7" width="24" height="18" rx="2.5" fill="#171f29" stroke="#3b82f6" stroke-width="1.6"/>
+      <rect x="6.5" y="9.5" width="5.5" height="5.5" rx="1" fill="#3b82f6"/>
+      <rect x="12.5" y="9.5" width="5.5" height="5.5" rx="1" fill="#16a34a"/>
+      <rect x="6.5" y="15.5" width="5.5" height="5.5" rx="1" fill="#d97706"/>
+      <rect x="12.5" y="15.5" width="5.5" height="5.5" rx="1" fill="#db2777"/>
+      <rect x="19" y="9.5" width="6.5" height="11.5" rx="1" fill="#0891b2"/>
+    </svg>
     <label for="truckSel" data-i18n="truckLabel">LKW</label>
     <select id="truckSel"></select>
     <button id="btnAdd"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg><span data-i18n="btnAdd">Neuer Auftrag</span></button>
@@ -591,12 +601,12 @@ function rowCandidates(o, W){
         const comp = [];
         for(let i=0;i<cl;i++) comp.push(lang);
         for(let i=0;i<cb;i++) comp.push(breit);
-        best[c] = {depth, width, comp};
+        best[c] = {depth, width, comp, breitN:cb};
       }
     }
   }
   if(Object.keys(best).length===0){   // Palette breiter als LKW -> 1 Stück (Überbreite)
-    best[1] = {depth:lang.fx, width:lang.fy, comp:[lang]};
+    best[1] = {depth:lang.fx, width:lang.fy, comp:[lang], breitN:0};
   }
   return best;
 }
@@ -613,17 +623,18 @@ function planRows(o, W, G){
     }
     return rows;
   }
-  // optimiert: DP über Palettenzahl -> minimale Gesamttiefe
+  // optimiert: minimale Gesamttiefe per DP; bei Gleichstand MAXIMAL breit
   const cand = rowCandidates(o, W);
   const counts = Object.keys(cand).map(Number).sort((a,b)=>a-b);
-  const f = new Array(G+1).fill(Infinity), choice = new Array(G+1).fill(0);
-  f[0] = 0;
+  const f = new Array(G+1).fill(Infinity), br = new Array(G+1).fill(0), choice = new Array(G+1).fill(0);
+  f[0] = 0; br[0] = 0;
   for(let n=1; n<=G; n++){
-    for(let i=counts.length-1; i>=0; i--){     // große Reihen zuerst -> bei Gleichstand vollere Reihe
+    for(let i=counts.length-1; i>=0; i--){
       const c = counts[i];
       if(c>n) continue;
-      const val = cand[c].depth + f[n-c];
-      if(val < f[n] - 0.01){ f[n]=val; choice[n]=c; }
+      const d = cand[c].depth + f[n-c];
+      const b = cand[c].breitN + br[n-c];
+      if(d < f[n]-0.01 || (Math.abs(d-f[n])<0.01 && b > br[n])){ f[n]=d; br[n]=b; choice[n]=c; }
     }
   }
   const rows = [];
@@ -632,6 +643,8 @@ function planRows(o, W, G){
     rows.push({depth:cand[c].depth, comp:cand[c].comp.slice()});
     n -= c;
   }
+  const isBreit = ori => ori.fx===o.breite && ori.fy===o.laenge;
+  rows.sort((a,b)=> b.comp.filter(isBreit).length - a.comp.filter(isBreit).length);  // breit vorne, lang hinten
   return rows;
 }
 // Gesamttiefe (= Lademeter) der Querreihen-Variante
@@ -656,10 +669,11 @@ function lanesPlan(o, W, ground){
         bl.count++;
       }
       const length = Math.max(...lanes.map(l=>l.count*l.unit));
-      if(!best || length < best.length-0.01) best = {lanes, length};
+      if(!best || length < best.length-0.01 || (Math.abs(length-best.length)<0.01 && nb > best.nb))
+        best = {lanes, length, nb};
     }
   }
-  if(!best) best = {lanes:[{unit:a, width:b, count:ground}], length:ground*a};  // Überbreite
+  if(!best) best = {lanes:[{unit:a, width:b, count:ground}], length:ground*a, nb:0};  // Überbreite
   return best;
 }
 // Bestes Packen eines Auftrags -> Streifen.
@@ -667,9 +681,19 @@ function lanesPlan(o, W, ground){
 //  mode "rows":  Querreihen als (rigider) Block; auch für feste Ladeart lang/breit.
 function packGround(o, W, ground){
   if(ground<=0) return {mode:"none"};
+  let rows = planRows(o, W, ground);
   if(o.ladeart!=="lang" && o.ladeart!=="breit"){
-    const lp = lanesPlan(o, W, ground), rl = rowsLength(o, W, ground);
-    if(lp.length <= rl + 0.01){                      // Bahnen bei Gleichstand bevorzugen (verschachteln besser)
+    const rowsLen = rows.reduce((s,r)=>s+r.depth, 0);
+    const isBreit = ori => ori.fx===o.breite && ori.fy===o.laenge;
+    const rowsBreit = rows.reduce((s,r)=> s + r.comp.filter(isBreit).length, 0);
+    const lp = lanesPlan(o, W, ground);
+    const lanesBreit = lp.lanes.reduce((s,l)=> s + (Math.abs(l.unit-o.breite)<0.01 ? l.count : 0), 0);
+    // kürzeste Länge gewinnt; bei Gleichstand mehr breit; bei Breit-Gleichstand Bahnen (verzahnen besser)
+    let useLanes;
+    if(lp.length < rowsLen - 0.01) useLanes = true;
+    else if(rowsLen < lp.length - 0.01) useLanes = false;
+    else useLanes = (lanesBreit >= rowsBreit);
+    if(useLanes){
       const strips = []; let y = 0;
       for(const ln of lp.lanes){
         const units = [];
@@ -682,7 +706,7 @@ function packGround(o, W, ground){
   }
   // Reihen-Modus (rigider Block)
   const block = []; let x = 0;
-  for(const row of planRows(o, W, ground)){
+  for(const row of rows){
     let y = 0;
     for(const ori of row.comp){ block.push({x, y, w:ori.fx, h:ori.fy}); y += ori.fy; }
     x += row.depth;
@@ -731,9 +755,12 @@ function gapFill(sky, W, oris, maxN){
       if(y < -0.01 || y+ori.fy > W+0.01) continue;
       const x = skyMax(sky, y, y+ori.fy);
       if(x + ori.fx > gMax + 0.01) continue;          // muss „gratis" unter die Decke passen
-      const area = ori.fx*ori.fy;
-      if(!best || x < best.x-0.01 || (Math.abs(x-best.x)<0.01 && area > best.area))
-        best = {x, y, w:ori.fx, h:ori.fy, area};
+      // Priorität: vorderste Position (x), dann flachste Tiefe (fx -> bevorzugt breit), dann mehr Breite (fy)
+      if(!best
+         || x < best.x - 0.01
+         || (Math.abs(x-best.x)<0.01 && ori.fx < best.w - 0.01)
+         || (Math.abs(x-best.x)<0.01 && Math.abs(ori.fx-best.w)<0.01 && ori.fy > best.h + 0.01))
+        best = {x, y, w:ori.fx, h:ori.fy};
     }
     if(!best) break;
     placed.push(best);
