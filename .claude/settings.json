@@ -24,7 +24,9 @@
       "Bash(git --no-pager log --oneline --all)",
       "Bash(git --no-pager show-ref --tags)",
       "Bash(GIT_SSH_COMMAND='ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new' git push --force --tags origin main)",
-      "Bash(grep -n '</head>\\\\|<body>\\\\|<style>\\\\|</style>\\\\|<script>\\\\|</script>\\\\|/\\\\* =\\\\{6,\\\\}' lkw-planer.html)"
+      "Bash(grep -n '</head>\\\\|<body>\\\\|<style>\\\\|</style>\\\\|<script>\\\\|</script>\\\\|/\\\\* =\\\\{6,\\\\}' lkw-planer.html)",
+      "Bash(node build.mjs)",
+      "Bash(node -e 'const fs=require\\(\"fs\"\\);fs.writeFileSync\\(\"/tmp/c.mjs\",fs.readFileSync\\(\"dist/lkw-planer.html\",\"utf8\"\\).match\\(/<script>\\([\\\\s\\\\S]*?\\)<\\\\/script>/\\)[1]\\);')"
     ]
   }
 }

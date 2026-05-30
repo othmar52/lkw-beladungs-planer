@@ -8,3 +8,8 @@ LKW Planner/Prompt.txt
 
 # Build-Ausgabe (nur als Release-Asset, nicht im Repo)
 dist/
+
+# Interne Doku / Arbeitsordner (lokal behalten, nicht ins Repo)
+LKW Planner/
+HANDOVER.md
+IDEAS.md

@@ -1,7 +1,7 @@
 /* ============================ Events ============================ */
 function esc(s){ return String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 
-// LKW-Auswahl
+// truck selection
 const truckSel = document.getElementById("truckSel");
 function rebuildTruckSelect(){
   truckSel.innerHTML = "";
@@ -14,7 +14,7 @@ function rebuildTruckSelect(){
 rebuildTruckSelect();
 truckSel.addEventListener("change", e=>{ record(); currentTruck = e.target.value; renderAll(); });
 
-/* ---------- Einstellungen (LKW-Typen + Anzeige) ---------- */
+/* ---------- settings (truck types + display) ---------- */
 const settingsModal = document.getElementById("settingsModal");
 const truckTable = document.getElementById("truckTable");
 const mm2m = mm => (mm/1000).toString().replace(".", ",");
@@ -33,7 +33,7 @@ function renderTruckTable(){
     </div>`;
   }).join("");
 }
-// liest alle Tabellenzeilen, baut TRUCKS neu (Reihenfolge bleibt), speichert & aktualisiert
+// reads all table rows, rebuilds TRUCKS (order preserved), saves & refreshes
 function applyTruckTable(){
   const next = {};
   truckTable.querySelectorAll(".trow").forEach(row=>{
@@ -44,7 +44,7 @@ function applyTruckTable(){
     const h = m2mm(row.querySelector('[data-k="h"]').value);
     if(l>0 && w>0 && h>0 && !next[name]) next[name] = {l, w, h};
   });
-  if(Object.keys(next).length===0) return;   // mind. ein gültiger Typ muss bleiben
+  if(Object.keys(next).length===0) return;   // at least one valid type must remain
   TRUCKS = next;
   if(!TRUCKS[currentTruck]) currentTruck = Object.keys(TRUCKS)[0];
   saveTrucks(); rebuildTruckSelect(); recalc();
@@ -82,8 +82,8 @@ setCrosshair.addEventListener("change", ()=>{
 });
 document.getElementById("langSel").addEventListener("change", e=>{
   settings.lang = e.target.value; saveSettings();
-  applyStatic();   // statische Texte
-  renderAll();     // dynamische Inhalte (Liste/Grafik/Info/Totals/Labels)
+  applyStatic();   // static texts
+  renderAll();     // dynamic content (list/graphic/info/totals/labels)
 });
 function openSettings(){
   renderTruckTable();
@@ -95,7 +95,7 @@ document.getElementById("btnSettings").addEventListener("click", openSettings);
 document.getElementById("settingsClose").addEventListener("click", ()=> settingsModal.classList.remove("open"));
 settingsModal.addEventListener("click", e=>{ if(e.target===settingsModal) settingsModal.classList.remove("open"); });
 
-// Hover über eine freie Lücke -> zwei Maß-Achsen (Länge × Breite der Lücke) einblenden
+// hover over a free gap -> show two measurement axes (length × width of the gap)
 const truckSvgEl = document.getElementById("truckSvg");
 const palTip = document.getElementById("palTip");
 function clearHoverGuide(){ const g = document.getElementById("hoverGuide"); if(g) g.innerHTML = ""; }
@@ -110,13 +110,13 @@ truckSvgEl.addEventListener("mousemove", e=>{
   const pad = HOVER_PAD, { truck, placements } = hoverLayout, L = truck.l, W = truck.w;
   const tx = loc.x - pad, ty = loc.y - pad;
   if(tx < 0 || tx > L || ty < 0 || ty > W){ clearHover(); return; }
-  // über einer geladenen Palette? -> Maße (L×B×H) als Tooltip anzeigen
+  // over a loaded pallet? -> show dimensions (L×W×H) as a tooltip
   for(const p of placements){
     if(tx >= p.x-0.01 && tx <= p.x+p.w+0.01 && ty >= p.y-0.01 && ty <= p.y+p.h+0.01){
       g.innerHTML = "";
       const o = p.order;
-      palTip.innerHTML = `<b>${esc(o.auftragsnummer || "#"+o.id)}</b>` + (o.kunde ? ` · ${esc(o.kunde)}` : "") + `<br>`+
-        `${t('tipLBH')} ${o.laenge} × ${o.breite} × ${o.hoehe} mm` + (p.stack===2 ? " "+t('stacked') : "");
+      palTip.innerHTML = `<b>${esc(o.orderNo || "#"+o.id)}</b>` + (o.customer ? ` · ${esc(o.customer)}` : "") + `<br>`+
+        `${t('tipLBH')} ${o.length} × ${o.width} × ${o.height} mm` + (p.stack===2 ? " "+t('stacked') : "");
       palTip.style.display = "block";
       const tw = palTip.offsetWidth, th = palTip.offsetHeight;
       let lx = e.clientX + 14, ty2 = e.clientY + 14;
@@ -129,7 +129,7 @@ truckSvgEl.addEventListener("mousemove", e=>{
   }
   hidePalTip();
   if(!settings.showCrosshair){ g.innerHTML = ""; return; }
-  // freie Spanne in X (bei Höhe ty) und in Y (bei Länge tx)
+  // free span in X (at height ty) and in Y (at length tx)
   let x0 = 0, x1 = L, y0 = 0, y1 = W;
   for(const p of placements){
     if(ty > p.y-0.01 && ty < p.y+p.h+0.01){
@@ -145,12 +145,12 @@ truckSvgEl.addEventListener("mousemove", e=>{
   const C = "#fbbf24", DK = "#0e1318";
   const px0=pad+x0, px1=pad+x1, py0=pad+y0, py1=pad+y1, ptx=pad+tx, pty=pad+ty;
   let h = "";
-  // X-Achse (Länge der Lücke)
+  // X axis (length of the gap)
   h += `<line x1="${px0}" y1="${pty}" x2="${px1}" y2="${pty}" stroke="${C}" stroke-width="9"/>`;
   h += `<line x1="${px0}" y1="${pty-55}" x2="${px0}" y2="${pty+55}" stroke="${C}" stroke-width="9"/>`;
   h += `<line x1="${px1}" y1="${pty-55}" x2="${px1}" y2="${pty+55}" stroke="${C}" stroke-width="9"/>`;
   h += `<text x="${(px0+px1)/2}" y="${pty-75}" font-size="150" fill="${C}" text-anchor="middle" font-weight="800" paint-order="stroke" stroke="${DK}" stroke-width="45">${fmt(x1-x0)}</text>`;
-  // Y-Achse (Breite der Lücke)
+  // Y axis (width of the gap)
   h += `<line x1="${ptx}" y1="${py0}" x2="${ptx}" y2="${py1}" stroke="${C}" stroke-width="9"/>`;
   h += `<line x1="${ptx-55}" y1="${py0}" x2="${ptx+55}" y2="${py0}" stroke="${C}" stroke-width="9"/>`;
   h += `<line x1="${ptx-55}" y1="${py1}" x2="${ptx+55}" y2="${py1}" stroke="${C}" stroke-width="9"/>`;
@@ -158,76 +158,76 @@ truckSvgEl.addEventListener("mousemove", e=>{
   g.innerHTML = h;
 });
 
-// Klick auf Palette -> zugehörige Auftragszeile hinscrollen + aufblitzen
+// click on a pallet -> scroll to the matching order row + flash it
 document.getElementById("truckSvg").addEventListener("click", e=>{
   const g = e.target.closest("[data-oid]"); if(!g) return;
   const row = document.querySelector(`.order[data-id="${g.dataset.oid}"]`);
   if(!row) return;
   row.scrollIntoView({behavior:"smooth", block:"center"});
   row.classList.remove("flash");
-  void row.offsetWidth;          // Reflow erzwingen, damit die Animation neu startet
+  void row.offsetWidth;          // force reflow so the animation restarts
   row.classList.add("flash");
   setTimeout(()=> row.classList.remove("flash"), 1200);
 });
 
-// Toolbar
+// toolbar
 document.getElementById("btnAdd").addEventListener("click", ()=>{
   record();
-  const o = makeOrder({laenge:1200, breite:800, hoehe:1200, anzahl:1, reihenfolge:1});
+  const o = makeOrder({length:1200, width:800, height:1200, qty:1, sequence:1});
   orders.push(o);
-  if(hideInactive){   // neuer Auftrag ist inaktiv -> Filter aus, damit er sichtbar ist
+  if(hideInactive){   // new order is inactive -> turn filter off so it is visible
     hideInactive = false;
     btnHide.classList.remove("toggled");
   }
   renderAll();
-  // zum neuen Auftrag scrollen und Auftragsnummer fokussieren
+  // scroll to the new order and focus the order number
   const row = document.querySelector(`.order[data-id="${o.id}"]`);
   if(row){
     row.scrollIntoView({behavior:"smooth", block:"nearest"});
-    const inp = row.querySelector('input[data-f="auftragsnummer"]');
+    const inp = row.querySelector('input[data-f="orderNo"]');
     if(inp){ inp.focus(); inp.select(); }
   }
 });
 document.getElementById("btnRefresh").addEventListener("click", renderAll);
 document.getElementById("btnUndo").addEventListener("click", undo);
 
-// Alle Aufträge auf inaktiv setzen
+// set all orders inactive
 document.getElementById("btnDeselect").addEventListener("click", ()=>{
-  if(!orders.some(o=>o.aktiv)) return;
+  if(!orders.some(o=>o.active)) return;
   record();
-  orders.forEach(o=> o.aktiv = false);
+  orders.forEach(o=> o.active = false);
   renderAll();
 });
 
-// Inaktive in der Liste aus-/einblenden
+// show/hide inactive orders in the list
 const btnHide = document.getElementById("btnHideInactive");
 function updateHideLabel(){
-  const inact = orders.filter(o=>!o.aktiv).length;
+  const inact = orders.filter(o=>!o.active).length;
   const lbl = document.getElementById("hideLabel");
   if(lbl) lbl.textContent = (hideInactive ? t('hideShow') : t('hideHide')) + (inact ? ` (${inact})` : "");
 }
 btnHide.addEventListener("click", ()=>{
   hideInactive = !hideInactive;
   btnHide.classList.toggle("toggled", hideInactive);
-  renderAll();   // Liste + Totals (inkl. Ausgeblendet-Hinweis) + Label aktualisieren
+  renderAll();   // refresh list + totals (incl. hidden hint) + label
 });
 
-// Bemerkungen-Notiz (Anzeigen/Bearbeiten)
+// load remarks note (view/edit)
 const noteModal = document.getElementById("noteModal");
 const noteArea = document.getElementById("noteArea");
 function updateNoteBtn(){
-  document.getElementById("btnNote").classList.toggle("hasnote", loadBemerkungen.trim().length>0);
+  document.getElementById("btnNote").classList.toggle("hasnote", loadNote.trim().length>0);
 }
 document.getElementById("btnNote").addEventListener("click", ()=>{
-  noteArea.value = loadBemerkungen; noteModal.classList.add("open"); noteArea.focus();
+  noteArea.value = loadNote; noteModal.classList.add("open"); noteArea.focus();
 });
 document.getElementById("noteCancel").addEventListener("click", ()=> noteModal.classList.remove("open"));
 document.getElementById("noteOk").addEventListener("click", ()=>{
-  loadBemerkungen = noteArea.value; updateNoteBtn(); noteModal.classList.remove("open");
+  loadNote = noteArea.value; updateNoteBtn(); noteModal.classList.remove("open");
 });
 noteModal.addEventListener("click", e=>{ if(e.target===noteModal) noteModal.classList.remove("open"); });
 
-// Export als JSON
+// export as JSON
 const nameModal = document.getElementById("nameModal");
 const nameInput = document.getElementById("nameInput");
 const expNote = document.getElementById("expNote");
@@ -237,12 +237,12 @@ function defaultExportName(){
   return `LKW-Ladung ${pad2(d.getDate())}.${pad2(d.getMonth()+1)}.${d.getFullYear()} ${pad2(d.getHours())}-${pad2(d.getMinutes())}`;
 }
 function doExport(name){
-  loadBemerkungen = expNote.value; updateNoteBtn();
-  const data = { app:"lkw-planer", version:1, truck:currentTruck, bemerkungen:loadBemerkungen,
-    orders: orders.map(o=>({ auftragsnummer:o.auftragsnummer, kunde:o.kunde, lieferdatum:o.lieferdatum,
-      destCode:o.destCode, anzahl:o.anzahl, laenge:o.laenge, breite:o.breite, hoehe:o.hoehe,
-      ladeart:o.ladeart, reihenfolge:o.reihenfolge, stapelbar:o.stapelbar, aktiv:o.aktiv,
-      bemerkung:o.bemerkung, color:o.color })) };
+  loadNote = expNote.value; updateNoteBtn();
+  const data = { app:"lkw-planer", version:1, truck:currentTruck, note:loadNote,
+    orders: orders.map(o=>({ orderNo:o.orderNo, customer:o.customer, deliveryDate:o.deliveryDate,
+      destCode:o.destCode, qty:o.qty, length:o.length, width:o.width, height:o.height,
+      loadMode:o.loadMode, sequence:o.sequence, stackable:o.stackable, active:o.active,
+      remark:o.remark, color:o.color })) };
   let fname = (name||"").trim().replace(/[\\/:*?"<>|]/g,"-") || defaultExportName();
   if(!/\.json$/i.test(fname)) fname += ".json";
   const blob = new Blob([JSON.stringify(data, null, 2)], {type:"application/json"});
@@ -256,7 +256,7 @@ function doExport(name){
 document.getElementById("btnExport").addEventListener("click", ()=>{
   if(orders.length===0){ notify("warn", t('tNoExport')); return; }
   nameInput.value = defaultExportName();
-  expNote.value = loadBemerkungen;
+  expNote.value = loadNote;
   nameModal.classList.add("open");
   nameInput.focus(); nameInput.select();
 });
@@ -268,7 +268,7 @@ nameInput.addEventListener("keydown", e=>{
   else if(e.key==="Escape"){ nameModal.classList.remove("open"); }
 });
 
-// Druck-Grafik: weiße LKW-Fläche, Paletten als Schraffur (je Auftrag eigener Winkel/Farbe)
+// print graphic: white truck area, pallets as hatching (per-order angle/colour)
 function buildPrintSvg(layout){
   const {truck, placements, usedLength} = layout;
   const L = truck.l, W = truck.w, pad = HOVER_PAD;
@@ -292,7 +292,7 @@ function buildPrintSvg(layout){
     const dash = p.overflow ? `stroke-dasharray="80 60"` : "";
     s += `<rect x="${x+12}" y="${y+12}" width="${p.w-24}" height="${p.h-24}" rx="16" fill="url(#${patId[p.order.id]})" stroke="${stroke}" stroke-width="9" ${dash}/>`;
     const cx = x + p.w/2, cy = y + p.h/2;
-    s += `<text class="pal-label" x="${cx}" y="${cy}" font-size="170" text-anchor="middle" dominant-baseline="central">${esc(p.order.auftragsnummer || "#"+p.order.id)}</text>`;
+    s += `<text class="pal-label" x="${cx}" y="${cy}" font-size="170" text-anchor="middle" dominant-baseline="central">${esc(p.order.orderNo || "#"+p.order.id)}</text>`;
     if(p.stack===2) s += `<text x="${x+p.w-70}" y="${y+150}" font-size="150" text-anchor="end" fill="#000" font-weight="800">2×</text>`;
   }
   if(usedLength>0 && usedLength<=L){ const ux = pad+usedLength;
@@ -304,31 +304,31 @@ function buildPrintSvg(layout){
          `<text x="${mx}" y="${by+160}" font-size="150" fill="#666" text-anchor="middle">${m}m</text>`; }
   return `<svg viewBox="0 0 ${vbW} ${vbH}" xmlns="http://www.w3.org/2000/svg">${s}</svg>`;
 }
-// Druckansicht / PDF (via Browser-Druckdialog -> „Als PDF speichern")
+// print view / PDF (via the browser print dialog -> "Save as PDF")
 function buildPrintView(){
   const layout = computeLayout();
   const truck = layout.truck;
-  const active = orders.filter(o=>o.aktiv && o.anzahl>0);
+  const active = orders.filter(o=>o.active && o.qty>0);
   const usedM = (Math.ceil(layout.usedLength/100)/10).toFixed(1);
   const Lm = truck.l/1000;
   const freeM = Math.max(0, Math.round((Lm - usedM)*10)/10).toFixed(1);
-  const totalPal = active.reduce((s,o)=>s+o.anzahl,0);
+  const totalPal = active.reduce((s,o)=>s+o.qty,0);
   const over = layout.placements.filter(p=>p.overflow).reduce((s,p)=>s+(p.stack||1),0);
   const d = new Date();
   const dateStr = `${pad2(d.getDate())}.${pad2(d.getMonth()+1)}.${d.getFullYear()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
   const fitTxt = active.length ? (layout.fits ? t('fitOk') : t('fitBad', over)) : "";
   const dims = `${Lm.toFixed(2)} × ${(truck.w/1000).toFixed(2)} × ${(truck.h/1000).toFixed(2)} m`;
-  const th = [t('col_auftragsnummer'),t('col_kunde'),t('col_lieferdatum'),t('col_destCode'),t('col_anzahl'),
-              t('printDims'),t('col_reihenfolge'),t('printLmCol'),t('col_bemerkung')]
+  const th = [t('col_orderNo'),t('col_customer'),t('col_deliveryDate'),t('col_destCode'),t('col_qty'),
+              t('printDims'),t('col_sequence'),t('printLmCol'),t('col_remark')]
               .map(x=>`<th>${esc(x)}</th>`).join("");
   const rows = active.map(o=>{
-    return `<tr><td>${esc(o.auftragsnummer)}</td><td>${esc(o.kunde)}</td><td>${esc(o.lieferdatum)}</td>`+
-      `<td>${esc(o.destCode)}</td><td>${o.anzahl}</td><td>${o.laenge} × ${o.breite} × ${o.hoehe}</td>`+
-      `<td>${o.reihenfolge}</td><td>${orderLademeter(o,truck).toFixed(1)}</td>`+
-      `<td>${esc(o.bemerkung||"")}</td></tr>`;
+    return `<tr><td>${esc(o.orderNo)}</td><td>${esc(o.customer)}</td><td>${esc(o.deliveryDate)}</td>`+
+      `<td>${esc(o.destCode)}</td><td>${o.qty}</td><td>${o.length} × ${o.width} × ${o.height}</td>`+
+      `<td>${o.sequence}</td><td>${orderLoadMeters(o,truck).toFixed(1)}</td>`+
+      `<td>${esc(o.remark||"")}</td></tr>`;
   }).join("");
-  const remarks = loadBemerkungen.trim()
-    ? `<div class="premarks"><b>${t('printRemarks')}:</b> ${esc(loadBemerkungen)}</div>` : "";
+  const remarks = loadNote.trim()
+    ? `<div class="premarks"><b>${t('printRemarks')}:</b> ${esc(loadNote)}</div>` : "";
   document.getElementById("printView").innerHTML =
     `<h1>${t('printTitle')}</h1>`+
     `<div class="pmeta"><b>${t('printDate')}:</b> ${dateStr} &nbsp;·&nbsp; <b>${t('truckLabel')}:</b> ${esc(currentTruck)} (${dims})<br>`+
@@ -341,7 +341,7 @@ function buildPrintView(){
 }
 document.getElementById("btnPrint").addEventListener("click", ()=>{ buildPrintView(); window.print(); });
 
-// Import aus JSON
+// import from JSON
 const fileImport = document.getElementById("fileImport");
 document.getElementById("btnImport").addEventListener("click", ()=> fileImport.click());
 fileImport.addEventListener("change", e=>{
@@ -351,31 +351,31 @@ fileImport.addEventListener("change", e=>{
     try{
       const data = JSON.parse(reader.result);
       const list = Array.isArray(data) ? data : data.orders;
-      if(!Array.isArray(list)) throw new Error("Kein Auftrags-Array gefunden.");
+      if(!Array.isArray(list)) throw new Error("No orders array found.");
       record();
       orders = list.map(d => makeOrder({
-        auftragsnummer:d.auftragsnummer||"", kunde:d.kunde||"", lieferdatum:d.lieferdatum||"",
-        destCode:d.destCode||"", anzahl:+d.anzahl||1,
-        laenge:+d.laenge||1200, breite:+d.breite||800, hoehe:+d.hoehe||1200,
-        ladeart:["optimiert","lang","breit"].includes(d.ladeart)?d.ladeart:"optimiert",
-        reihenfolge:Math.max(1,Math.min(99,+d.reihenfolge||1)),
-        stapelbar:!!d.stapelbar, aktiv:!!d.aktiv, bemerkung:d.bemerkung||"",
+        orderNo:d.orderNo||"", customer:d.customer||"", deliveryDate:d.deliveryDate||"",
+        destCode:d.destCode||"", qty:+d.qty||1,
+        length:+d.length||1200, width:+d.width||800, height:+d.height||1200,
+        loadMode:["optimized","long","wide"].includes(d.loadMode)?d.loadMode:"optimized",
+        sequence:Math.max(1,Math.min(99,+d.sequence||1)),
+        stackable:!!d.stackable, active:!!d.active, remark:d.remark||"",
         ...(d.color ? {color:d.color} : {}),
       }));
       if(data.truck && TRUCKS[data.truck]){ currentTruck = data.truck; truckSel.value = currentTruck; }
-      loadBemerkungen = (data && typeof data.bemerkungen==="string") ? data.bemerkungen : "";
+      loadNote = (data && typeof data.note==="string") ? data.note : "";
       updateNoteBtn();
       renderAll();
-      const noteHint = loadBemerkungen.trim() ? t('withRemarks') : "";
+      const noteHint = loadNote.trim() ? t('withRemarks') : "";
       notify("ok", t('imported', orders.length) + noteHint + ".", "", 4000);
     }catch(err){
       notify("warn", t('tImportFail'), String(err.message||err), 6000);
     }
   };
   reader.readAsText(file);
-  fileImport.value = "";   // gleiche Datei erneut wählbar
+  fileImport.value = "";   // allow selecting the same file again
 });
-// Reset: Zwei-Klick-Bestätigung direkt am Button (kein natives confirm)
+// reset: two-click confirmation on the button (no native confirm)
 const btnReset = document.getElementById("btnReset");
 const resetLabel = document.getElementById("resetLabel");
 let resetArmed = false, resetTimer = null;
@@ -384,69 +384,69 @@ function disarmReset(){
   btnReset.classList.remove("armed"); resetLabel.textContent = t('resetLabel');
 }
 btnReset.addEventListener("click", ()=>{
-  if(orders.length===0){ disarmReset(); return; }   // nichts zu löschen
+  if(orders.length===0){ disarmReset(); return; }   // nothing to clear
   if(!resetArmed){
     resetArmed = true;
     btnReset.classList.add("armed");
     resetLabel.textContent = t('resetArmed');
-    resetTimer = setTimeout(disarmReset, 4000);       // automatisch zurücksetzen
+    resetTimer = setTimeout(disarmReset, 4000);       // reset automatically
     return;
   }
   disarmReset();
   record();
-  orders = []; colorIdx = 0; loadBemerkungen = ""; updateNoteBtn(); renderAll();
+  orders = []; colorIdx = 0; loadNote = ""; updateNoteBtn(); renderAll();
 });
-// Klick woanders entschärft den Reset wieder
+// a click elsewhere disarms the reset again
 document.addEventListener("click", e=>{ if(resetArmed && !btnReset.contains(e.target)) disarmReset(); });
 
-// Liste: Eingaben (event delegation)
+// list: inputs (event delegation)
 const list = document.getElementById("list");
-let editRecorded = false;   // wurde diese Textfeld-Bearbeitung schon in der History gesichert?
+let editRecorded = false;   // has this text-field edit already been saved to history?
 list.addEventListener("input", e=>{
   const card = e.target.closest(".order"); if(!card) return;
   const o = orders.find(x=>x.id==card.dataset.id); if(!o) return;
   const f = e.target.dataset.f; if(!f) return;
-  if(!editRecorded){ record(); editRecorded = true; }   // 1 Undo-Schritt pro Bearbeitung
-  if(e.target.classList.contains("num") || f==="reihenfolge"){
+  if(!editRecorded){ record(); editRecorded = true; }   // one undo step per edit
+  if(e.target.classList.contains("num") || f==="sequence"){
     handleNumInput(e.target, o, f);
   } else {
     o[f] = e.target.value;
   }
-  if(["laenge","breite","hoehe","anzahl","ladeart","reihenfolge"].includes(f)) recalc();
+  if(["length","width","height","qty","loadMode","sequence"].includes(f)) recalc();
 });
 list.addEventListener("change", e=>{
   const card = e.target.closest(".order"); if(!card) return;
   const o = orders.find(x=>x.id==card.dataset.id); if(!o) return;
   const f = e.target.dataset.f;
-  if(f==="stapelbar"){ record(); o.stapelbar = e.target.checked; recalc(); }
-  else if(f==="aktiv"){ record(); o.aktiv = e.target.checked;
-    if(hideInactive) renderList(); else card.classList.toggle("inactive",!o.aktiv);
+  if(f==="stackable"){ record(); o.stackable = e.target.checked; recalc(); }
+  else if(f==="active"){ record(); o.active = e.target.checked;
+    if(hideInactive) renderList(); else card.classList.toggle("inactive",!o.active);
     recalc(); }
-  else if(f==="ladeart"){ record(); o.ladeart = e.target.value; renderList(); recalc(); }
+  else if(f==="loadMode"){ record(); o.loadMode = e.target.value; renderList(); recalc(); }
 });
 list.addEventListener("click", e=>{
   const btn = e.target.closest("button[data-act]"); if(!btn) return;
   const card = e.target.closest(".order"); const o = orders.find(x=>x.id==card.dataset.id); if(!o) return;
   const act = btn.dataset.act;
   if(act==="del"){ record(); orders = orders.filter(x=>x.id!==o.id); renderAll(); }
-  else if(act==="inc"){ record(); o.reihenfolge = Math.min(99,(+o.reihenfolge||0)+1); renderList(); recalc(); }
-  else if(act==="dec"){ record(); o.reihenfolge = Math.max(1,(+o.reihenfolge||1)-1); renderList(); recalc(); }
+  else if(act==="inc"){ record(); o.sequence = Math.min(99,(+o.sequence||0)+1); renderList(); recalc(); }
+  else if(act==="dec"){ record(); o.sequence = Math.max(1,(+o.sequence||1)-1); renderList(); recalc(); }
 });
-// Sortierbare Spaltenköpfe
+// sortable column headers
 list.addEventListener("click", e=>{
   const h = e.target.closest("[data-sort]"); if(!h) return;
   sortOrders(h.dataset.sort);
 });
-// Paletten eines Auftrags in der Grafik aufblitzen lassen
+// flash an order's pallets in the graphic
 function flashPallets(oid){
   document.querySelectorAll(`#truckSvg g.pal[data-oid="${oid}"]`).forEach(g=>{
     g.classList.remove("palflash");
-    void g.getBoundingClientRect();   // Reflow -> Animation startet neu
+    void g.getBoundingClientRect();   // reflow -> restart animation
     g.classList.add("palflash");
     setTimeout(()=> g.classList.remove("palflash"), 950);
   });
 }
-// Auslöser mit Dedupe (verhindert Doppel-Blitz aus Klick + Fokus derselben Interaktion)
+// trigger with dedupe (prevents a double flash from click + focus of the same interaction)
 let lastFlashOid = null, lastFlashT = 0;
 function triggerFlash(oid){
   const now = performance.now();
@@ -454,17 +454,17 @@ function triggerFlash(oid){
   lastFlashOid = oid; lastFlashT = now;
   flashPallets(oid);
 }
-// Tab -> Inhalt markieren; Fokus in eine Zeile -> deren Paletten aufblitzen
+// Tab -> select content; focus into a row -> flash its pallets
 list.addEventListener("focusin", e=>{
   if(e.target.tagName==="INPUT" && e.target.type!=="checkbox"){ editRecorded = false; e.target.select(); }
   const card = e.target.closest(".order"); if(card) triggerFlash(card.dataset.id);
 });
-// Klick irgendwo in die Zeile (außer Buttons/Header) -> Paletten aufblitzen
+// click anywhere in the row (except buttons/header) -> flash pallets
 list.addEventListener("click", e=>{
   if(e.target.closest("button[data-act]") || e.target.closest("[data-sort]")) return;
   const card = e.target.closest(".order"); if(card) triggerFlash(card.dataset.id);
 });
-// Klick auf das Farbquadrat -> Auftragsnummer in die Zwischenablage kopieren
+// click the copy icon -> copy the order number to the clipboard
 async function copyText(t){
   try{ await navigator.clipboard.writeText(t); return true; }
   catch(_){
@@ -476,36 +476,36 @@ async function copyText(t){
 list.addEventListener("click", e=>{
   const sw = e.target.closest(".order .copybtn"); if(!sw) return;
   const card = e.target.closest(".order"); const o = orders.find(x=>x.id==card.dataset.id); if(!o) return;
-  const nr = o.auftragsnummer || ("#"+o.id);
+  const nr = o.orderNo || ("#"+o.id);
   copyText(nr).then(ok => notify(ok?"ok":"warn",
     ok ? t('copied', esc(nr)) : t('copyFail'), "", 2500));
 });
 
 function handleNumInput(input, o, f){
-  if(f==="laenge"||f==="breite"||f==="hoehe"){
-    // nur Ziffern + Komma; Punkt -> Komma
+  if(f==="length"||f==="width"||f==="height"){
+    // digits + comma only; dot -> comma
     let v = input.value.replace(/\./g,",").replace(/[^0-9,]/g,"");
     const parts = v.split(","); if(parts.length>2) v = parts[0]+","+parts.slice(1).join("");
     input.value = v;
     o[f] = parseFloat(v.replace(",","."))||0;
-  } else if(f==="anzahl"){
+  } else if(f==="qty"){
     let v = input.value.replace(/[^0-9]/g,""); input.value=v;
-    o.anzahl = parseInt(v,10)||0;
-  } else if(f==="reihenfolge"){
+    o.qty = parseInt(v,10)||0;
+  } else if(f==="sequence"){
     let v = input.value.replace(/[^0-9]/g,"");
     let n = parseInt(v,10); if(!Number.isFinite(n)) n=1; n=Math.max(1,Math.min(99,n));
-    input.value = v===""?"":n; o.reihenfolge = n;
+    input.value = v===""?"":n; o.sequence = n;
   }
 }
 
-/* ---- Zwischenablage ---- */
+/* ---- clipboard ---- */
 const modal = document.getElementById("modal");
 const pasteArea = document.getElementById("pasteArea");
 document.getElementById("btnPaste").addEventListener("click", async ()=>{
   try{
     const txt = await navigator.clipboard.readText();
     if(txt && txt.trim()){ importText(txt); return; }
-  }catch(_){ /* Berechtigung verweigert -> Fallback-Dialog */ }
+  }catch(_){ /* permission denied -> fallback dialog */ }
   pasteArea.value=""; modal.classList.add("open"); pasteArea.focus();
 });
 document.getElementById("pasteCancel").addEventListener("click", ()=>modal.classList.remove("open"));
@@ -518,22 +518,22 @@ function importText(txt){
     notify("warn", t('tNoValid'));
     return;
   }
-  // Duplikate nach Auftragsnummer aussortieren (bereits vorhandene + innerhalb des Imports)
-  const seen = new Set(orders.map(o => o.auftragsnummer).filter(Boolean));
+  // drop duplicates by order number (existing ones + within the import)
+  const seen = new Set(orders.map(o => o.orderNo).filter(Boolean));
   const toAdd = [], duplicates = [];
   for(const o of parsed){
-    const nr = o.auftragsnummer;
+    const nr = o.orderNo;
     if(nr && seen.has(nr)){ duplicates.push(nr); }
     else { if(nr) seen.add(nr); toAdd.push(o); }
   }
   if(toAdd.length){
     const truck = TRUCKS[currentTruck];
-    toAdd.forEach(o=>{ o.stapelbar = (2*o.hoehe <= truck.h); }); // Default Stapelbar
+    toAdd.forEach(o=>{ o.stackable = (2*o.height <= truck.h); }); // default stackable
     record();
     orders.push(...toAdd);
     renderAll();
   }
-  // Hinweise zusammenstellen
+  // assemble hints
   const parts = [];
   if(duplicates.length) parts.push(t('dupSkipped', duplicates.length));
   if(skipped.length)    parts.push(t('incomplIgnored', skipped.length));
@@ -545,10 +545,10 @@ function importText(txt){
     if(skipped.length>5) detail += "\n" + t('andMore', skipped.length-5);
   }
   const hasWarn = duplicates.length || skipped.length;
-  notify(hasWarn ? "warn" : "ok", title, detail.trim(), 5000);  // nach 5 s automatisch ausblenden
+  notify(hasWarn ? "warn" : "ok", title, detail.trim(), 5000);  // auto-hide after 5 s
 }
 
-// Toast-Hinweis: type ok|warn, html-Titel, optional Code-Vorschau, timeoutMs (0 = bleibt bis Schließen)
+// toast hint: type ok|warn, html title, optional code preview, timeoutMs (0 = stays until closed)
 function notify(type, titleHtml, detail="", timeoutMs=5000){
   const box = document.getElementById("toasts");
   const el = document.createElement("div");
@@ -560,11 +560,11 @@ function notify(type, titleHtml, detail="", timeoutMs=5000){
   if(timeoutMs>0) setTimeout(()=>el.remove(), timeoutMs);
 }
 
-// Tastenkürzel Strg+Z (nicht in Textfeldern, dort gilt natives Undo)
+// keyboard shortcut Ctrl+Z (not in text fields, native undo applies there)
 document.addEventListener("keydown", e=>{
   if((e.ctrlKey||e.metaKey) && !e.shiftKey && e.key.toLowerCase()==="z"){
     const t = e.target.tagName;
-    if(t==="INPUT" || t==="TEXTAREA") return;   // natives Undo im Feld
+    if(t==="INPUT" || t==="TEXTAREA") return;   // native undo in the field
     e.preventDefault(); undo();
   }
 });
