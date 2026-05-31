@@ -1,6 +1,10 @@
 /* ============================ Events ============================ */
 function esc(s){ return String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 
+// manual edit mode (hand-arranged pallets, used to author optimal target layouts for the test suite)
+let manualMode = false;
+let manualPallets = null;   // [{pid, order, color, w, h, x, y, stack, overflow}]
+
 // truck selection
 const truckSel = document.getElementById("truckSel");
 function rebuildTruckSelect(){
@@ -103,6 +107,7 @@ function hidePalTip(){ palTip.style.display = "none"; }
 function clearHover(){ clearHoverGuide(); hidePalTip(); }
 truckSvgEl.addEventListener("mouseleave", clearHover);
 truckSvgEl.addEventListener("mousemove", e=>{
+  if(manualMode){ clearHover(); return; }   // no crosshair while hand-editing
   const g = document.getElementById("hoverGuide"); if(!g || !hoverLayout) return;
   const ctm = truckSvgEl.getScreenCTM(); if(!ctm) return;
   const pt = truckSvgEl.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
@@ -160,6 +165,7 @@ truckSvgEl.addEventListener("mousemove", e=>{
 
 // click on a pallet -> scroll to the matching order row + flash it
 document.getElementById("truckSvg").addEventListener("click", e=>{
+  if(manualMode) return;   // in manual mode clicks are drags
   const g = e.target.closest("[data-oid]"); if(!g) return;
   const row = document.querySelector(`.order[data-id="${g.dataset.oid}"]`);
   if(!row) return;
@@ -169,6 +175,126 @@ document.getElementById("truckSvg").addEventListener("click", e=>{
   row.classList.add("flash");
   setTimeout(()=> row.classList.remove("flash"), 1200);
 });
+
+/* ---------- manual mode: drag pallets + snap to nearest valid spot ---------- */
+// build a layout object (like computeLayout) from the hand-arranged pallets
+function manualLayout(){
+  const truck = TRUCKS[currentTruck];
+  const placements = (manualPallets||[]).map(p=>({
+    x:p.x, y:p.y, w:p.w, h:p.h, color:p.color, order:p.order, stack:p.stack, pid:p.pid,
+    overflow:(p.x+p.w) > truck.l+0.01 }));
+  const usedLength = placements.reduce((m,p)=> Math.max(m, p.x+p.w), 0);
+  return { placements, usedLength, fits: usedLength <= truck.l+0.01, truck };
+}
+// seed the manual pallets from the current automatic layout (starting point for editing)
+function seedManualFromAuto(){
+  const layout = computeLayout();
+  manualPallets = layout.placements.map((p,i)=>({
+    pid:i+1, order:p.order, color:p.color, w:p.w, h:p.h, x:p.x, y:p.y, stack:p.stack }));
+}
+function setManualMode(on){
+  manualMode = on;
+  document.getElementById("btnManual").classList.toggle("toggled", on);
+  truckSvgEl.classList.toggle("manual", on);
+  if(on){ seedManualFromAuto(); notify("ok", t('manualOn'), "", 3500); }
+  else  { manualPallets = null;  notify("ok", t('manualOff'), "", 2500); }
+  recalc();
+}
+document.getElementById("btnManual").addEventListener("click", ()=> setManualMode(!manualMode));
+
+// snap a pallet to the nearest collision-free position; neighbour edges form the candidate grid
+function snapPallet(pal){
+  const W = TRUCKS[currentTruck].w;
+  const others = manualPallets.filter(p=>p!==pal);
+  const hit = (x,y)=> others.some(o=> x < o.x+o.w-0.5 && o.x < x+pal.w-0.5 && y < o.y+o.h-0.5 && o.y < y+pal.h-0.5);
+  const cx = x=> Math.max(0, x);
+  const cy = y=> Math.max(0, Math.min(W-pal.h, y));
+  const xs = new Set([cx(pal.x), 0]); const ys = new Set([cy(pal.y), 0, W-pal.h]);
+  for(const o of others){ xs.add(cx(o.x)); xs.add(cx(o.x+o.w)); xs.add(cx(o.x-pal.w));
+                          ys.add(cy(o.y)); ys.add(cy(o.y+o.h)); ys.add(cy(o.y-pal.h)); }
+  const dx = cx(pal.x), dy = cy(pal.y);
+  let best = null;
+  for(const x of xs) for(const y of ys){
+    if(x<-0.01 || y<-0.01 || y+pal.h>W+0.01 || hit(x,y)) continue;
+    const d = (x-dx)*(x-dx) + (y-dy)*(y-dy);
+    if(!best || d < best.d) best = {x, y, d};
+  }
+  if(best){ pal.x = best.x; pal.y = best.y; return; }
+  // fallback: slide to the front within its y-band until it touches something
+  pal.y = cy(pal.y); let x = 0;
+  for(const o of others) if(pal.y < o.y+o.h-0.5 && o.y < pal.y+pal.h-0.5) x = Math.max(x, o.x+o.w);
+  pal.x = x;
+}
+
+// pointer drag of a pallet (truck mm via the SVG transform)
+let drag = null;
+function svgMM(e){
+  const ctm = truckSvgEl.getScreenCTM(); if(!ctm) return null;
+  const pt = truckSvgEl.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
+  const loc = pt.matrixTransform(ctm.inverse());
+  return { x: loc.x - HOVER_PAD, y: loc.y - HOVER_PAD };
+}
+truckSvgEl.addEventListener("pointerdown", e=>{
+  if(!manualMode) return;
+  const g = e.target.closest("[data-pid]"); if(!g) return;
+  const pal = manualPallets.find(p=>p.pid==g.dataset.pid); if(!pal) return;
+  const loc = svgMM(e); if(!loc) return;
+  drag = { pal, dx: loc.x - pal.x, dy: loc.y - pal.y };
+  try{ truckSvgEl.setPointerCapture(e.pointerId); }catch(_){}
+  e.preventDefault();
+});
+truckSvgEl.addEventListener("pointermove", e=>{
+  if(!drag) return;
+  const loc = svgMM(e); if(!loc) return;
+  const truck = TRUCKS[currentTruck];
+  drag.pal.x = Math.max(0, loc.x - drag.dx);
+  drag.pal.y = Math.max(0, Math.min(truck.w - drag.pal.h, loc.y - drag.dy));
+  renderTruck(manualLayout());   // live preview (lightweight)
+  e.preventDefault();
+});
+truckSvgEl.addEventListener("pointerup", e=>{
+  if(!drag) return;
+  snapPallet(drag.pal); drag = null;
+  try{ truckSvgEl.releasePointerCapture(e.pointerId); }catch(_){}
+  recalc();
+});
+// double-click a pallet -> rotate (swap length/width) if it still fits the width
+truckSvgEl.addEventListener("dblclick", e=>{
+  if(!manualMode) return;
+  const g = e.target.closest("[data-pid]"); if(!g) return;
+  const pal = manualPallets.find(p=>p.pid==g.dataset.pid); if(!pal) return;
+  if(pal.h > TRUCKS[currentTruck].w && pal.w > TRUCKS[currentTruck].w) return;
+  if(pal.w > TRUCKS[currentTruck].w) return;   // rotated (new height = old width) would exceed width
+  const nw = pal.h, nh = pal.w; pal.w = nw; pal.h = nh;
+  snapPallet(pal); recalc(); e.preventDefault();
+});
+
+/* ---------- export current load as a test-suite fixture (tests/cases/*.json) ---------- */
+function exportTestcase(){
+  const truck = TRUCKS[currentTruck];
+  const active = orders.filter(o=>o.active && o.qty>0);
+  if(!active.length){ notify("warn", t('tNoExport')); return; }
+  const auto = computeLayout();                          // what the algorithm currently produces
+  const disp = manualMode ? manualLayout() : auto;       // displayed target (manual if hand-edited)
+  const r = (mm,d=3)=> +(mm/1000).toFixed(d);
+  const fixture = {
+    name: `${active.length} Auftraege, ${active.reduce((s,o)=>s+o.qty,0)} Pal., ${r(disp.usedLength,2)}m`,
+    truck: { l:truck.l, w:truck.w, h:truck.h },
+    orders: active.map(o=>({ orderNo:o.orderNo, qty:o.qty, length:o.length, width:o.width, height:o.height,
+      loadMode:o.loadMode, sequence:o.sequence, stackable:o.stackable })),
+    expected: { usedLength_m: r(disp.usedLength,2), overflow: auto.placements.filter(p=>p.overflow).length, tolerance_m: 0.05 },
+    baseline: { usedLength_m: r(auto.usedLength,3) },
+  };
+  const d = new Date();
+  const ts = `${pad2(d.getDate())}${pad2(d.getMonth()+1)}-${pad2(d.getHours())}${pad2(d.getMinutes())}`;
+  const fname = `testcase-${active.length}o-${r(disp.usedLength,2)}m-${ts}.json`;
+  const blob = new Blob([JSON.stringify(fixture, null, 2)+"\n"], {type:"application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); a.href=url; a.download=fname;
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  notify("ok", t('tcSaved'), "tests/cases/ ← "+fname, 4500);
+}
+document.getElementById("btnTestcase").addEventListener("click", exportTestcase);
 
 // toolbar
 // add a new order (used by the toolbar button and the footer button in the list)

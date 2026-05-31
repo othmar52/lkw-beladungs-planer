@@ -24,7 +24,8 @@ function renderTruck(layout){
     const dash = p.overflow ? `stroke-dasharray="80 60"` : "";
     const cx = x + p.w/2, cy = y + p.h/2;
     const label = (p.order.orderNo || "#"+p.order.id);
-    s += `<g class="pal" data-oid="${p.order.id}" style="cursor:pointer">`;
+    const pidAttr = (p.pid!=null) ? ` data-pid="${p.pid}"` : "";
+    s += `<g class="pal" data-oid="${p.order.id}"${pidAttr} style="cursor:pointer">`;
     s += `<rect x="${x+12}" y="${y+12}" width="${p.w-24}" height="${p.h-24}" rx="22" fill="${p.color}" fill-opacity="${p.overflow?.5:.92}" stroke="${stroke}" stroke-width="12" ${dash}/>`;
     s += `<text class="pal-label" x="${cx}" y="${cy}" font-size="170" text-anchor="middle" dominant-baseline="central">${esc(label)}</text>`;
     if(p.stack===2){
@@ -217,7 +218,8 @@ function recalc(){
   // force stackable off when the truck is too low
   const truck = TRUCKS[currentTruck];
   orders.forEach(o=>{ if(2*o.height > truck.h) o.stackable = false; });
-  const layout = computeLayout();
+  // manual mode: render the hand-arranged pallets instead of the computed layout
+  const layout = (typeof manualMode!=="undefined" && manualMode) ? manualLayout() : computeLayout();
   renderTruck(layout);
   renderTotals(layout);
   renderInfo(layout);

@@ -150,6 +150,10 @@
   .w-seq{width:104px}.w-stack{width:92px;flex:none}.w-active{width:58px;flex:none}
   .w-remark{flex:1 1 120px;min-width:88px;}
   svg .pal-label{font-weight:700;fill:#11203a;paint-order:stroke;stroke:rgba(255,255,255,.75);stroke-width:60px;}
+  /* manual mode: pallets are draggable */
+  #truckSvg.manual{cursor:default;touch-action:none;}
+  #truckSvg.manual .pal{cursor:grab !important;}
+  #truckSvg.manual .pal:active{cursor:grabbing !important;}
   /* paste modal */
   #modal,#nameModal,#settingsModal,#noteModal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:50;}
   #modal.open,#nameModal.open,#settingsModal.open,#noteModal.open{display:flex;}
