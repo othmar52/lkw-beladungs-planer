@@ -112,26 +112,40 @@ function lanesPlan(o, W, ground){
 //  mode "rows":  cross-rows as a (rigid) block; also for fixed load mode long/wide.
 function packGround(o, W, ground){
   if(ground<=0) return {mode:"none"};
-  // fixed orientation (long/wide): place as independent lanes so each lane slides into
-  // skyline steps and interlocks with neighbours (avoids holes from a rigid block).
+  // fixed orientation (long/wide): build the LARGEST full rectangle in the requested orientation;
+  // the overflow (pallets that don't complete a row) is rotated to the other orientation and laid
+  // flat behind it — only when that is actually shorter. Lanes interlock with neighbours.
   if(o.loadMode==="long" || o.loadMode==="wide"){
     const wide = (o.loadMode==="wide");
-    const laneW = wide ? o.length : o.width;   // strip width across the truck (Y)
-    const unit  = wide ? o.width  : o.length;  // pallet depth along the truck (X)
-    const nLanes = Math.max(1, Math.floor(W / laneW));
-    const counts = new Array(nLanes).fill(0);
-    for(let k=0; k<ground; k++){                // balance pallets -> shortest lane next
-      let bi = 0;
-      for(let i=1;i<nLanes;i++) if((counts[i]+1)*unit < (counts[bi]+1)*unit) bi = i;
-      counts[bi]++;
-    }
-    const strips = []; let y = 0;
-    for(let i=0;i<nLanes;i++){
-      if(counts[i]===0) continue;
-      const units = [];
-      for(let k=0;k<counts[i];k++) units.push({w:unit, h:laneW});
-      strips.push({y, h:laneW, units});
-      y += laneW;
+    const reqAcross = wide ? o.length : o.width;    // across-truck size of requested orientation
+    const reqDepth  = wide ? o.width  : o.length;   // depth (along truck) of requested orientation
+    const rotAcross = wide ? o.width  : o.length;   // rotated pallet across-size
+    const rotDepth  = wide ? o.length : o.width;    // rotated pallet depth
+    const nLanes = Math.max(1, Math.floor(W / reqAcross));
+    const fullRows = Math.floor(ground / nLanes);
+    const rem = ground - fullRows * nLanes;
+    const staircaseDepth = Math.ceil(ground / nLanes) * reqDepth;
+    const rectRotDepth   = fullRows*reqDepth + (rem>0 ? rotDepth : 0);
+    const rotFits = rem>0 && rem*rotAcross <= W + 0.01;
+    const strips = [];
+    if(fullRows>=1 && rotFits && rectRotDepth < staircaseDepth - 0.01){
+      // full lang rectangle...
+      for(let i=0;i<nLanes;i++){
+        const units = []; for(let k=0;k<fullRows;k++) units.push({w:reqDepth, h:reqAcross});
+        strips.push({y:i*reqAcross, h:reqAcross, units});
+      }
+      // ...overflow rotated, side by side, laid flat behind the rectangle
+      for(let k=0;k<rem;k++) strips.push({y:k*rotAcross, h:rotAcross, units:[{w:rotDepth, h:rotAcross}]});
+    } else {
+      // no worthwhile overflow -> balanced lanes in the requested orientation
+      const counts = new Array(nLanes).fill(0);
+      for(let k=0; k<ground; k++){ let bi=0; for(let i=1;i<nLanes;i++) if((counts[i]+1)*reqDepth < (counts[bi]+1)*reqDepth) bi=i; counts[bi]++; }
+      let y = 0;
+      for(let i=0;i<nLanes;i++){
+        if(counts[i]===0) continue;
+        const units = []; for(let k=0;k<counts[i];k++) units.push({w:reqDepth, h:reqAcross});
+        strips.push({y, h:reqAcross, units}); y += reqAcross;
+      }
     }
     return {mode:"lanes", strips};
   }
@@ -360,23 +374,27 @@ function computeLayout(ordersArg, truckArg){
   const better = (a,b)=> a.usedLength < b.usedLength-0.01
     || (Math.abs(a.usedLength-b.usedLength)<0.01 && a.breit > b.breit);
 
-  // optimized orders may be loaded long or wide -> search the orientation that keeps the
-  // TOTAL length shortest (hill-climbing); wide is only kept when it does not lengthen the load.
-  const flippable = active.filter(o=> o.loadMode!=="long" && o.loadMode!=="wide").map(o=>o.id);
-  const modeOf = {};                       // empty -> "optimized" (auto) for every order
+  // Orientation search (hill-climbing). Two rules:
+  //  - "optimized" orders: free to try long/wide/auto, adopt on any shortening (tie -> more wide).
+  //  - fixed "long"/"wide" orders: the requested orientation is a PREFERENCE, not absolute — it may be
+  //    relaxed to free orientation, but only when that shortens the TOTAL load significantly (>= RELAX_MM),
+  //    e.g. so following orders pack tighter. Small gains keep the requested orientation.
+  // optimized orders may flip long/wide to shorten the load (tie -> more wide). Fixed long/wide
+  // orders keep their orientation; their unavoidable overflow is rotated inside packGround (see above).
+  const flippable = active.filter(o=> o.loadMode==="optimized").map(o=>o.id);
+  const modeOf = {};
   let cur = evalAssign(modeOf);
-  if(flippable.length && flippable.length <= 16){
+  if(flippable.length && active.length <= 16){
     let improved = true, guard = 0;
     while(improved && guard++ < 8){
       improved = false;
       for(const id of flippable){
         const save = modeOf[id];
-        for(const m of [undefined, "long", "wide"]){   // undefined = back to auto
+        for(const m of [undefined, "long", "wide"]){
           if(m===save) continue;
           modeOf[id] = m;
           const cand = evalAssign(modeOf);
-          if(better(cand, cur)){ cur = cand; improved = true; }
-          else modeOf[id] = save;
+          if(better(cand, cur)){ cur = cand; improved = true; } else modeOf[id] = save;
         }
       }
     }

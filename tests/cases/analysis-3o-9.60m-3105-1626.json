@@ -1,0 +1,365 @@
+{
+  "kind": "analysis",
+  "truckName": "Plane",
+  "truck": {
+    "l": 13600,
+    "w": 2450,
+    "h": 2650
+  },
+  "orders": [
+    {
+      "orderNo": "R5736",
+      "customer": "Test 1",
+      "deliveryDate": "",
+      "destCode": "",
+      "qty": 5,
+      "length": 1200,
+      "width": 1000,
+      "height": 1809,
+      "loadMode": "optimized",
+      "sequence": 2,
+      "stackable": false,
+      "active": true,
+      "color": "#2563eb"
+    },
+    {
+      "orderNo": "R7907",
+      "customer": "Test 2",
+      "deliveryDate": "",
+      "destCode": "",
+      "qty": 5,
+      "length": 1200,
+      "width": 1200,
+      "height": 1281,
+      "loadMode": "optimized",
+      "sequence": 2,
+      "stackable": false,
+      "active": true,
+      "color": "#16a34a"
+    },
+    {
+      "orderNo": "R2147",
+      "customer": "Test 3",
+      "deliveryDate": "",
+      "destCode": "",
+      "qty": 6,
+      "length": 1400,
+      "width": 1000,
+      "height": 1901,
+      "loadMode": "optimized",
+      "sequence": 1,
+      "stackable": false,
+      "active": true,
+      "color": "#d97706"
+    }
+  ],
+  "algo": {
+    "usedLength_m": 9.6,
+    "overflow": 0,
+    "placements": [
+      {
+        "oi": 2,
+        "x": 0,
+        "y": 0,
+        "w": 1400,
+        "h": 1000,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 2,
+        "x": 1400,
+        "y": 0,
+        "w": 1400,
+        "h": 1000,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 2,
+        "x": 0,
+        "y": 1000,
+        "w": 1000,
+        "h": 1400,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 2,
+        "x": 1000,
+        "y": 1000,
+        "w": 1000,
+        "h": 1400,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 2,
+        "x": 2000,
+        "y": 1000,
+        "w": 1000,
+        "h": 1400,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 2,
+        "x": 3000,
+        "y": 1000,
+        "w": 1000,
+        "h": 1400,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 1,
+        "x": 4000,
+        "y": 0,
+        "w": 1200,
+        "h": 1200,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 1,
+        "x": 5200,
+        "y": 0,
+        "w": 1200,
+        "h": 1200,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 1,
+        "x": 6400,
+        "y": 0,
+        "w": 1200,
+        "h": 1200,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 1,
+        "x": 4000,
+        "y": 1200,
+        "w": 1200,
+        "h": 1200,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 1,
+        "x": 5200,
+        "y": 1200,
+        "w": 1200,
+        "h": 1200,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 0,
+        "x": 6400,
+        "y": 1200,
+        "w": 1000,
+        "h": 1200,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 0,
+        "x": 7600,
+        "y": 0,
+        "w": 1000,
+        "h": 1200,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 0,
+        "x": 8600,
+        "y": 0,
+        "w": 1000,
+        "h": 1200,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 0,
+        "x": 7400,
+        "y": 1200,
+        "w": 1000,
+        "h": 1200,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 0,
+        "x": 8400,
+        "y": 1200,
+        "w": 1000,
+        "h": 1200,
+        "stack": 1,
+        "overflow": false
+      }
+    ]
+  },
+  "hand": {
+    "usedLength_m": 9.6,
+    "overflow": 0,
+    "placements": [
+      {
+        "oi": 2,
+        "x": 0,
+        "y": 0,
+        "w": 1400,
+        "h": 1000,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 2,
+        "x": 1400,
+        "y": 0,
+        "w": 1400,
+        "h": 1000,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 2,
+        "x": 0,
+        "y": 1000,
+        "w": 1000,
+        "h": 1400,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 2,
+        "x": 1000,
+        "y": 1000,
+        "w": 1000,
+        "h": 1400,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 2,
+        "x": 2000,
+        "y": 1000,
+        "w": 1000,
+        "h": 1400,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 2,
+        "x": 3000,
+        "y": 1000,
+        "w": 1000,
+        "h": 1400,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 1,
+        "x": 6000,
+        "y": 0,
+        "w": 1200,
+        "h": 1200,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 1,
+        "x": 7200,
+        "y": 0,
+        "w": 1200,
+        "h": 1200,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 1,
+        "x": 8400,
+        "y": 0,
+        "w": 1200,
+        "h": 1200,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 1,
+        "x": 6000,
+        "y": 1200,
+        "w": 1200,
+        "h": 1200,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 1,
+        "x": 7200,
+        "y": 1200,
+        "w": 1200,
+        "h": 1200,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 0,
+        "x": 4000,
+        "y": 1200,
+        "w": 1000,
+        "h": 1200,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 0,
+        "x": 5000,
+        "y": 0,
+        "w": 1000,
+        "h": 1200,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 0,
+        "x": 2800,
+        "y": 0,
+        "w": 1200,
+        "h": 1000,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 0,
+        "x": 4000,
+        "y": 0,
+        "w": 1000,
+        "h": 1200,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 0,
+        "x": 5000,
+        "y": 1200,
+        "w": 1000,
+        "h": 1200,
+        "stack": 1,
+        "overflow": false
+      }
+    ]
+  },
+  "expected": {
+    "usedLength_m": 9.6,
+    "overflow": 0,
+    "tolerance_m": 0.05
+  },
+  "baseline": {
+    "usedLength_m": 9.6
+  },
+  "name": "3 Auftr., 16 Pal., algo 9.6m -> hand 9.6m"
+}

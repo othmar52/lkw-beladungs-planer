@@ -1,0 +1,224 @@
+{
+  "kind": "analysis",
+  "truckName": "Plane",
+  "truck": {
+    "l": 13600,
+    "w": 2450,
+    "h": 2650
+  },
+  "orders": [
+    {
+      "orderNo": "R8606",
+      "customer": "Test 1",
+      "deliveryDate": "",
+      "destCode": "",
+      "qty": 7,
+      "length": 1300,
+      "width": 900,
+      "height": 1370,
+      "loadMode": "long",
+      "sequence": 1,
+      "stackable": false,
+      "active": true,
+      "color": "#2563eb"
+    },
+    {
+      "orderNo": "R8343",
+      "customer": "Test 2",
+      "deliveryDate": "",
+      "destCode": "",
+      "qty": 2,
+      "length": 1300,
+      "width": 900,
+      "height": 1030,
+      "loadMode": "optimized",
+      "sequence": 1,
+      "stackable": false,
+      "active": true,
+      "color": "#16a34a"
+    }
+  ],
+  "algo": {
+    "usedLength_m": 5.2,
+    "overflow": 0,
+    "placements": [
+      {
+        "oi": 0,
+        "x": 0,
+        "y": 0,
+        "w": 1300,
+        "h": 900,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 0,
+        "x": 1300,
+        "y": 0,
+        "w": 1300,
+        "h": 900,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 0,
+        "x": 2600,
+        "y": 0,
+        "w": 1300,
+        "h": 900,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 0,
+        "x": 0,
+        "y": 900,
+        "w": 900,
+        "h": 1300,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 0,
+        "x": 900,
+        "y": 900,
+        "w": 900,
+        "h": 1300,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 0,
+        "x": 1800,
+        "y": 900,
+        "w": 900,
+        "h": 1300,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 0,
+        "x": 2700,
+        "y": 900,
+        "w": 900,
+        "h": 1300,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 1,
+        "x": 3900,
+        "y": 0,
+        "w": 1300,
+        "h": 900,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 1,
+        "x": 3600,
+        "y": 900,
+        "w": 900,
+        "h": 1300,
+        "stack": 1,
+        "overflow": false
+      }
+    ]
+  },
+  "hand": {
+    "usedLength_m": 4.9,
+    "overflow": 0,
+    "placements": [
+      {
+        "oi": 0,
+        "x": 0,
+        "y": 0,
+        "w": 1300,
+        "h": 900,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 0,
+        "x": 1300,
+        "y": 0,
+        "w": 1300,
+        "h": 900,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 0,
+        "x": 2600,
+        "y": 0,
+        "w": 1300,
+        "h": 900,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 0,
+        "x": 0,
+        "y": 900,
+        "w": 900,
+        "h": 1300,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 0,
+        "x": 900,
+        "y": 900,
+        "w": 900,
+        "h": 1300,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 0,
+        "x": 1800,
+        "y": 900,
+        "w": 900,
+        "h": 1300,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 0,
+        "x": 2700,
+        "y": 900,
+        "w": 900,
+        "h": 1300,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 1,
+        "x": 3600,
+        "y": 1300,
+        "w": 1300,
+        "h": 900,
+        "stack": 1,
+        "overflow": false
+      },
+      {
+        "oi": 1,
+        "x": 3900,
+        "y": 0,
+        "w": 900,
+        "h": 1300,
+        "stack": 1,
+        "overflow": false
+      }
+    ]
+  },
+  "expected": {
+    "usedLength_m": 4.9,
+    "overflow": 0,
+    "tolerance_m": 0.05
+  },
+  "baseline": {
+    "usedLength_m": 5.7
+  },
+  "name": "2 Auftr., 9 Pal., algo 5.2m -> hand 4.9m"
+}

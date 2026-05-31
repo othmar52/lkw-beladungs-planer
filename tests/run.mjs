@@ -95,8 +95,8 @@ function runCase(c) {
 }
 
 // --- run ---
-const files = readdirSync(CASES_DIR).filter(f => f.endsWith(".json")).sort();
-if (!files.length) { console.error("No cases found in", CASES_DIR); process.exit(1); }
+let files = [];
+try { files = readdirSync(CASES_DIR).filter(f => f.endsWith(".json")).sort(); } catch (_) { /* dir may not exist yet */ }
 
 const m = mm => mm == null ? "  —  " : (mm / 1000).toFixed(2);
 let fail = 0, improvedN = 0;
@@ -117,16 +117,20 @@ for (const f of files) {
 }
 
 const pad = (s, n) => String(s).padEnd(n);
-console.log(pad("Case", 34) + pad("Ziel", 7) + pad("Base", 7) + pad("Ist", 7) + pad("Δ", 8) + "Status");
-console.log("-".repeat(69));
-for (const { r, status } of rows) {
-  const delta = r.baseMM != null ? ((r.istMM - r.baseMM) / 1000).toFixed(2) : "—";
-  console.log(pad(r.name.slice(0, 33), 34) + pad(m(r.tgtMM), 7) + pad(m(r.baseMM), 7) + pad(m(r.istMM), 7) + pad(delta, 8) + status);
-  for (const msg of r.fails) console.log("    ↳ " + msg);
+if (!files.length) {
+  console.log("Keine Cases in tests/cases/ — lege Wunsch-Layout-JSONs ab (App: „Als Testfall exportieren“).");
+} else {
+  console.log(pad("Case", 34) + pad("Ziel", 7) + pad("Base", 7) + pad("Ist", 7) + pad("Δ", 8) + "Status");
+  console.log("-".repeat(69));
+  for (const { r, status } of rows) {
+    const delta = r.baseMM != null ? ((r.istMM - r.baseMM) / 1000).toFixed(2) : "—";
+    console.log(pad(r.name.slice(0, 33), 34) + pad(m(r.tgtMM), 7) + pad(m(r.baseMM), 7) + pad(m(r.istMM), 7) + pad(delta, 8) + status);
+    for (const msg of r.fails) console.log("    ↳ " + msg);
+  }
+  console.log("-".repeat(69));
+  const score = scoreN ? (scoreSum / scoreN).toFixed(3) : "n/a";
+  console.log(`${files.length} cases · FAIL ${fail} · Verbesserungen ${improvedN} · Score (Ø Ist/Ziel) ${score}`);
 }
-console.log("-".repeat(69));
-const score = scoreN ? (scoreSum / scoreN).toFixed(3) : "n/a";
-console.log(`${files.length} cases · FAIL ${fail} · Verbesserungen ${improvedN} · Score (Ø Ist/Ziel) ${score}`);
 
 // --- Tier 1: invariant fuzz (deterministic seed) — random inputs, only assert no-overlap / width / placed ---
 const FUZZ = 4000;

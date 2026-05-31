@@ -37,6 +37,28 @@ overlaps / width / completeness. Catches correctness bugs without a hand answer.
 }
 ```
 
+### Error-analysis files (from the app's "Als Testfall exportieren")
+
+The app exports a richer, runner-compatible variant that documents *both* layouts so the
+algorithm can be improved. The runner only reads `truck` / `orders` / `expected` / `baseline`;
+the rest is context for humans (and future algo work):
+
+```jsonc
+{
+  "kind": "analysis",
+  "truckName": "Plane",
+  "algo": { "usedLength_m": 6.06, "overflow": 0,         // what the algorithm produces ("not optimal" if a hand layout exists)
+            "placements": [ { "oi": 0, "x": 0, "y": 0, "w": 1200, "h": 800, "stack": 1 } ] },
+  "hand": { "usedLength_m": 5.66, "placements": [ ... ] }, // manually corrected target ("this is good") — optional
+  ...
+}
+```
+
+`expected.usedLength_m` is set to the hand length (if present, else the algo length).
+Re-open such a file via the app's JSON import — if it has a `hand` layout, it loads straight
+into manual mode for inspection. `oi` = index into `orders`; positions are absolute mm
+(so the relative arrangement between orders is preserved).
+
 ## Adding a case
 
 1. In the app, build a load you consider optimal (manually if needed) and note the length.

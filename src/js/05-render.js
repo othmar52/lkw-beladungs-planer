@@ -49,6 +49,7 @@ function renderTruck(layout){
     s += `<text x="${mx}" y="${by+160}" font-size="150" fill="#7b8a9c" text-anchor="middle">${m}m</text>`;
   }
   s += `<g id="hoverGuide" style="pointer-events:none"></g>`;   // hover measurements (gaps)
+  s += `<g id="dropGuide" style="pointer-events:none"></g>`;    // manual-mode drop preview (not cleared by hover)
   svg.innerHTML = s;
 }
 
