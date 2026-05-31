@@ -281,10 +281,11 @@ function orderByGroups(active, cmp, truck){
   }
   return out;
 }
-function computeLayout(){
-  const truck = TRUCKS[currentTruck];
+// orders/truck default to the app globals; pass them explicitly for tests (see tests/run.mjs)
+function computeLayout(ordersArg, truckArg){
+  const truck = truckArg || TRUCKS[currentTruck];
   const L = truck.l;
-  const active = orders.filter(o => o.active && o.qty>0);
+  const active = (ordersArg || orders).filter(o => o.active && o.qty>0);
   active.sort((a,b)=> (a.sequence-b.sequence) || (a.id-b.id));
 
   const gnd = o => isStackable(o,truck) ? Math.ceil(o.qty/2) : o.qty;
