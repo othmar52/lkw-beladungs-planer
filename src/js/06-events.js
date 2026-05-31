@@ -454,7 +454,7 @@ const PRINT_CSS = `
 `;
 // print view / PDF: rendered in a hidden about:blank iframe so the PDF footer carries no file path
 function buildPrintView(){
-  const layout = computeLayout();
+  const layout = manualMode ? manualLayout() : computeLayout();   // print the hand-arranged layout in manual mode
   const truck = layout.truck;
   const active = orders.filter(o=>o.active && o.qty>0);
   const usedM = (Math.ceil(layout.usedLength/100)/10).toFixed(1);
