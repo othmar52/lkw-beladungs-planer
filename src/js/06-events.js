@@ -239,24 +239,29 @@ truckSvgEl.addEventListener("pointerdown", e=>{
   const g = e.target.closest("[data-pid]"); if(!g) return;
   const pal = manualPallets.find(p=>p.pid==g.dataset.pid); if(!pal) return;
   const loc = svgMM(e); if(!loc) return;
-  drag = { pal, dx: loc.x - pal.x, dy: loc.y - pal.y };
-  try{ truckSvgEl.setPointerCapture(e.pointerId); }catch(_){}
-  e.preventDefault();
+  // do NOT preventDefault/capture here yet — that would swallow the click/dblclick (rotate)
+  drag = { pal, dx: loc.x - pal.x, dy: loc.y - pal.y, moved:false, pointerId:e.pointerId };
 });
 truckSvgEl.addEventListener("pointermove", e=>{
   if(!drag) return;
   const loc = svgMM(e); if(!loc) return;
   const truck = TRUCKS[currentTruck];
-  drag.pal.x = Math.max(0, loc.x - drag.dx);
-  drag.pal.y = Math.max(0, Math.min(truck.w - drag.pal.h, loc.y - drag.dy));
+  const nx = Math.max(0, loc.x - drag.dx), ny = Math.max(0, Math.min(truck.w - drag.pal.h, loc.y - drag.dy));
+  if(!drag.moved){
+    if(Math.abs(nx-drag.pal.x) < 8 && Math.abs(ny-drag.pal.y) < 8) return;  // ignore jitter -> stays a click
+    drag.moved = true;
+    try{ truckSvgEl.setPointerCapture(drag.pointerId); }catch(_){}
+  }
+  drag.pal.x = nx; drag.pal.y = ny;
   renderTruck(manualLayout());   // live preview (lightweight)
   e.preventDefault();
 });
 truckSvgEl.addEventListener("pointerup", e=>{
   if(!drag) return;
-  snapPallet(drag.pal); drag = null;
-  try{ truckSvgEl.releasePointerCapture(e.pointerId); }catch(_){}
-  recalc();
+  const { pal, moved } = drag;
+  try{ if(moved) truckSvgEl.releasePointerCapture(drag.pointerId); }catch(_){}
+  drag = null;
+  if(moved){ snapPallet(pal); recalc(); }   // a plain click (no move) leaves the DOM intact -> dblclick can fire
 });
 // double-click a pallet -> rotate (swap length/width) if it still fits the width
 truckSvgEl.addEventListener("dblclick", e=>{

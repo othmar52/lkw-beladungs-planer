@@ -268,6 +268,44 @@ function layoutSequence(seq, truck){
   const usedLength = placements.reduce((m,p)=> Math.max(m, p.x+p.w), 0);
   return {placements, usedLength};
 }
+// Alternative: skyline best-fit, pallet by pallet. Each pallet is placed at the
+// orientation/width-band that yields the SHORTEST resulting end (fills short lanes
+// instead of extending the longest). Orders processed in sequence; later orders may
+// still tuck into earlier recesses. Used as an extra candidate in computeLayout.
+function layoutSequenceGreedy(seq, truck){
+  const W = truck.w;
+  const placements = [];
+  let sky = [{y0:0, y1:W, x:0}];
+  for(const o of seq){
+    const stack = isStackable(o, truck);
+    const ground = stack ? Math.ceil(o.qty/2) : o.qty;
+    if(ground<=0) continue;
+    let left = o.qty;
+    const sc = ()=>{ const s = stack ? Math.min(2, left) : 1; left -= s; return s; };
+    const lengthwise = {fx:o.length, fy:o.width}, crosswise = {fx:o.width, fy:o.length};
+    const oris = o.loadMode==="long" ? [lengthwise] : o.loadMode==="wide" ? [crosswise] : [lengthwise, crosswise];
+    for(let k=0; k<ground; k++){
+      const ys = new Set([0]); for(const s of sky){ ys.add(s.y0); ys.add(s.y1); }
+      let best = null;
+      for(const ori of oris) for(const y of ys){
+        if(y < -0.01 || y+ori.fy > W+0.01) continue;
+        const x = skyMax(sky, y, y+ori.fy), endx = x + ori.fx;
+        // minimise end; tie -> frontmost; tie -> shallower (wide); tie -> fuller width
+        if(!best
+           || endx < best.endx-0.01
+           || (Math.abs(endx-best.endx)<0.01 && x < best.x-0.01)
+           || (Math.abs(endx-best.endx)<0.01 && Math.abs(x-best.x)<0.01 && ori.fx < best.fx-0.01)
+           || (Math.abs(endx-best.endx)<0.01 && Math.abs(x-best.x)<0.01 && Math.abs(ori.fx-best.fx)<0.01 && ori.fy > best.fy+0.01))
+          best = {x, y, fx:ori.fx, fy:ori.fy, endx};
+      }
+      if(!best) break;
+      placements.push({ x:best.x, y:best.y, w:best.fx, h:best.fy, color:o.color, order:o, stack:sc() });
+      sky = skySet(sky, best.y, best.y+best.fy, best.endx);
+    }
+  }
+  const usedLength = placements.reduce((m,p)=> Math.max(m, p.x+p.w), 0);
+  return {placements, usedLength};
+}
 // Orders with the SAME sequence may be reordered (spec). We try several
 // orderings within each sequence group and take the shortest result.
 function orderByGroups(active, cmp, truck){
@@ -308,11 +346,14 @@ function computeLayout(ordersArg, truckArg){
       ? Object.assign({}, o, {loadMode:modeOf[o.id]}) : o);
     let best = null;
     for(const cmp of cmps){
-      const r = layoutSequence(orderByGroups(view, cmp, truck), truck);
-      const breit = breitCount(r.placements);
-      if(!best || r.usedLength < best.usedLength-0.01
-         || (Math.abs(r.usedLength-best.usedLength)<0.01 && breit > best.breit))
-        best = {usedLength:r.usedLength, breit, placements:r.placements};
+      const seq = orderByGroups(view, cmp, truck);
+      for(const fn of [layoutSequence, layoutSequenceGreedy]){
+        const r = fn(seq, truck);
+        const breit = breitCount(r.placements);
+        if(!best || r.usedLength < best.usedLength-0.01
+           || (Math.abs(r.usedLength-best.usedLength)<0.01 && breit > best.breit))
+          best = {usedLength:r.usedLength, breit, placements:r.placements};
+      }
     }
     return best;
   }
