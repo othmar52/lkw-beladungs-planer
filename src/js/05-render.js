@@ -58,7 +58,7 @@ function renderTotals(layout){
   const L = layout.truck.l/1000;
   const used = Math.ceil(layout.usedLength/100)/10;
   const free = Math.max(0, Math.round((L-used)*10)/10);
-  const hidden = hideInactive ? orders.filter(o=>!o.active).length : 0;
+  const hidden = (hideInactive && !filterText) ? orders.filter(o=>!onActive(o)).length : 0;
   const hiddenSpan = hidden>0
     ? `<span class="hiddeninfo"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20C5 20 1 12 1 12a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><path d="M1 1l22 22"/></svg>${esc(t('hiddenInfo', hidden))}</span>`
     : "";
@@ -71,7 +71,7 @@ function renderTotals(layout){
 }
 function renderInfo(layout){
   const truck = layout.truck;
-  const active = orders.filter(o=>o.active && o.qty>0);
+  const active = loadOrders(activeLoad());   // virtual orders on the active load (qty = assigned)
   const totalPal = active.reduce((s,o)=> s + o.qty, 0);
   const over = layout.placements.filter(p=>p.overflow).reduce((s,p)=> s + (p.stack||1), 0);
   const loaded = totalPal - over;
@@ -101,39 +101,77 @@ const SORT_COLS = [
   {key:"deliveryDate",    label:"Lieferdatum", cls:"w-date", date:true},
   {key:"destCode",       label:"Dest",        cls:"w-dest"},
   {key:"qty",         label:"Pal.",        cls:"w-pal", num:true},
-  {key:"length",         label:"Länge",       cls:"w-mm",  num:true},
-  {key:"width",         label:"Breite",      cls:"w-mm",  num:true},
-  {key:"height",          label:"Höhe",        cls:"w-mm",  num:true},
+  {key:"lbh",             label:"L×B×H mm",    cls:"w-lbh", num:true, sortKey:"length"},
   {key:"loadMode",        label:"Ladeart",     cls:"w-art"},
   {key:"sequence",    label:"Reihenfolge", cls:"w-seq"},
   {key:"stackable",      label:"Stapelbar",   cls:"w-stack", bool:true},
-  {key:"active",          label:"Aktiv",       cls:"w-active", bool:true},
+  {key:"assign",          label:"Auf Ladung",  cls:"w-assign", assign:true},
+  {key:"status",          label:"Verteilung",  cls:"w-status", nosort:true},
   {key:"remark",      label:"Bemerkung",   cls:"w-remark"},
 ];
 let sortState = {key:null, dir:1};
 function dateVal(s){ const m=/^(\d{2})\.(\d{2})\.(\d{2})$/.exec(String(s||"").trim()); return m ? (+m[3])*10000+(+m[2])*100+(+m[1]) : -1; }
 function sortOrders(key){
   const col = SORT_COLS.find(c=>c.key===key); if(!col) return;
+  record();   // reordering the list is an undoable action
   if(sortState.key===key) sortState.dir *= -1; else { sortState.key=key; sortState.dir=1; }
-  const dir = sortState.dir;
+  const dir = sortState.dir, f = col.sortKey || key;
   orders.sort((a,b)=>{
-    if(col.bool) return ((a[key]?1:0)-(b[key]?1:0))*dir;
-    if(col.num)  return ((+a[key]||0)-(+b[key]||0))*dir;
-    if(col.date) return (dateVal(a[key])-dateVal(b[key]))*dir;
-    return String(a[key]??"").localeCompare(String(b[key]??""), "de", {numeric:true})*dir;
+    if(col.assign){ const L=activeLoad(); return (assignedOn(L,a)-assignedOn(L,b))*dir; }
+    if(col.bool) return ((a[f]?1:0)-(b[f]?1:0))*dir;
+    if(col.num)  return ((+a[f]||0)-(+b[f]||0))*dir;
+    if(col.date) return (dateVal(a[f])-dateVal(b[f]))*dir;
+    return String(a[f]??"").localeCompare(String(b[f]??""), "de", {numeric:true})*dir;
   });
   renderList(); recalc();   // recalc re-applies the per-row position band
 }
 
-// inline header controls (set all inactive / hide inactive) — placed between Aktiv and Bemerkung
+/* ---------- loads (tabs + per-order assignment status) ---------- */
+function loadIndex(l){ return loads.indexOf(l); }
+function loadLabel(l){ return (l.name && l.name.trim()) ? l.name.trim() : t('loadTab', loadIndex(l)+1); }
+function loadShort(l){ const n = loadLabel(l); return n.length>9 ? n.slice(0,8)+"…" : n; }
+// per-order status chips: how many pallets are still open + which OTHER loads hold some
+function assignStatHtml(o){
+  if((o.qty|0)<=0) return "";
+  const open = openQty(o);
+  let h = "";
+  if(open>0) h += `<span class="chip open">${esc(t('openN', open))}</span>`;
+  for(const l of loads){
+    if(l.id===activeLoadId) continue;
+    const n = l.assign[o.id]|0; if(n<=0) continue;
+    h += `<span class="chip other" title="${esc(loadLabel(l))}: ${n}">${esc(loadShort(l))}: ${n}</span>`;
+  }
+  return h;
+}
+// tab bar above the truck graphic: one tab per load (name + pallet count) + add button
+function renderTabs(){
+  const bar = document.getElementById("loadTabs"); if(!bar) return;
+  let h = "";
+  loads.forEach(l=>{
+    const cnt = orders.reduce((s,o)=> s + (l.assign[o.id]|0), 0);
+    const act = l.id===activeLoadId;
+    h += `<button class="ltab ${act?'active':''}" data-loadid="${l.id}" title="${esc(loadLabel(l))} — ${esc(l.truck)}">`+
+      `<span class="ltabname">${esc(loadLabel(l))}</span>`+
+      `<span class="ltabcount" title="${esc(t('palCount', cnt))}">${cnt}</span>`+
+      (loads.length>1?`<span class="ltabx" data-loaddel="${l.id}" title="${esc(t('loadDel'))}">×</span>`:``)+
+      `</button>`;
+  });
+  h += `<button class="ltabadd" data-loadadd="1" title="${esc(t('loadAdd'))}">`+
+    `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg></button>`;
+  bar.innerHTML = h;
+}
+
+// inline header controls (clear active load / hide off-load) — placed between Auf-Ladung and Bemerkung
 function headCtlHtml(){
-  const inact = orders.filter(o=>!o.active).length;
+  const inact = orders.filter(o=>!onActive(o)).length;
+  const filtering = !!filterText;   // a search is active -> highlight the hide/show toggle
+  const hideTitle = filtering ? t('hideSearch') : (hideInactive?t('hideShow'):t('hideHide'));
   return `<span class="headctl">`+
     `<button class="hbtn" data-listact="allInactive" title="${esc(t('titleDeselect'))}">`+
       `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M16 9l-6 6-3-3"/></svg></button>`+
-    `<button class="hbtn ${hideInactive?'on':''}" data-listact="hideInactive" title="${esc(hideInactive?t('hideShow'):t('hideHide'))}">`+
+    `<button class="hbtn ${hideInactive?'on':''} ${filtering?'filtering':''}" data-listact="hideInactive" title="${esc(hideTitle)}">`+
       `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20C5 20 1 12 1 12a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><path d="M1 1l22 22"/></svg>`+
-      (hideInactive && inact>0?`<span class="cnt">${inact}</span>`:``)+`</button>`+
+      (hideInactive && !filtering && inact>0?`<span class="cnt">${inact}</span>`:``)+`</button>`+
   `</span>`;
 }
 // always-present add / paste buttons at the end of the list
@@ -159,8 +197,10 @@ function renderList(){
     `<span class="swatch" style="visibility:hidden"></span>` +
     SORT_COLS.map(c=>{
       const arrow = sortState.key===c.key ? `<span class="sortarrow">${sortState.dir>0?"▲":"▼"}</span>` : "";
-      const span = `<span class="${c.cls}" data-sort="${c.key}">${t("col_"+c.key)}${arrow}</span>`;
-      return c.key==="active" ? span + headCtlHtml() : span;
+      const span = c.nosort
+        ? `<span class="${c.cls}">${t("col_"+c.key)}</span>`
+        : `<span class="${c.cls}" data-sort="${c.key}">${t("col_"+c.key)}${arrow}</span>`;
+      return c.key==="assign" ? span + headCtlHtml() : span;
     }).join("");
   const body = document.getElementById("listBody");
   body.classList.toggle("empty-state", orders.length===0);
@@ -172,21 +212,25 @@ function renderList(){
   document.getElementById("listHead").style.display = "";
   const matches = o => !filterText ||
     (`${o.orderNo} ${o.customer} ${o.destCode} ${o.deliveryDate} ${o.remark}`).toLowerCase().includes(filterText);
-  const visible = orders.filter(o => (hideInactive ? o.active : true) && matches(o));
+  // an active search overrides "hide inactive": every match shows (inactive orders are searched too)
+  const visible = orders.filter(o => filterText ? matches(o) : (hideInactive ? onActive(o) : true));
   const note = (visible.length===0) ? `<div class="empty">${t('noMatch')}</div>` : "";
   body.innerHTML = note + visible.map(o=>{
     const stackPossible = 2*o.height <= truck.h;
     const lm = orderLoadMeters(o,truck).toFixed(1);
-    return `<div class="order ${o.active?'':'inactive'}" style="--c:${o.color}" data-id="${o.id}">
+    return `<div class="order ${onActive(o)?'':'inactive'}" style="--c:${o.color}" data-id="${o.id}">
       <button class="copybtn" title="${t('titleCopyNr')}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
       <div class="fld w-num"><label>${t('col_orderNo')}</label><input class="txt" data-f="orderNo" value="${esc(o.orderNo)}"></div>
       <div class="fld w-customer"><label>${t('col_customer')}</label><input class="txt" data-f="customer" value="${esc(o.customer)}"></div>
       <div class="fld w-date"><label>${t('col_deliveryDate')}</label><input class="txt" data-f="deliveryDate" value="${esc(o.deliveryDate)}"></div>
       <div class="fld w-dest"><label>${t('col_destCode')}</label><input class="txt" data-f="destCode" value="${esc(o.destCode)}"></div>
       <div class="fld w-pal"><label>${t('col_qty')}</label><input class="txt num" data-f="qty" value="${o.qty}"></div>
-      <div class="fld w-mm"><label>${t('fld_length')}</label><input class="txt num" data-f="length" value="${o.length}"></div>
-      <div class="fld w-mm"><label>${t('fld_width')}</label><input class="txt num" data-f="width" value="${o.width}"></div>
-      <div class="fld w-mm"><label>${t('fld_height')}</label><input class="txt num" data-f="height" value="${o.height}"></div>
+      <div class="fld w-lbh"><label>${t('col_lbh')}</label>
+        <div class="lbhbox">
+          <input class="num" data-f="length" value="${o.length}" title="${t('fld_length')}"><span class="sep">×</span>
+          <input class="num" data-f="width" value="${o.width}" title="${t('fld_width')}"><span class="sep">×</span>
+          <input class="num" data-f="height" value="${o.height}" title="${t('fld_height')}">
+        </div></div>
       <div class="fld w-art"><label>${t('col_loadMode')}</label>
         <select data-f="loadMode">
           <option value="optimized" ${o.loadMode==="optimized"?"selected":""}>${t('opt_optimized')}</option>
@@ -203,8 +247,13 @@ function renderList(){
       </div>
       <div class="fld w-stack ${stackPossible?'':'disabled'}"><label>${t('col_stackable')}</label>
         <div class="togglewrap"><input type="checkbox" class="toggle" data-f="stackable" ${o.stackable?"checked":""} ${stackPossible?"":"disabled"}></div></div>
-      <div class="fld w-active"><label>${t('col_active')}</label>
-        <div class="togglewrap"><input type="checkbox" class="toggle" data-f="active" ${o.active?"checked":""}></div></div>
+      <div class="fld w-assign"><label>${t('col_assign')}</label>
+        <div class="assignbox">
+          <input class="txt num assign" data-f="assignQty" inputmode="numeric" value="${assignedOn(activeLoad(),o)||""}" placeholder="0" title="${esc(t('assignTitle'))}">
+          <button class="miniact" data-act="fillFit" title="${esc(t('fillFit'))}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M13 5l7 7-7 7M4 5l7 7-7 7"/></svg></button>
+          <button class="miniact ghostdanger" data-act="clearAssign" title="${esc(t('clearAssign'))}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+        </div></div>
+      <div class="fld w-status"><label>${t('col_status')}</label><span class="assignstat">${assignStatHtml(o)}</span></div>
       <div class="fld w-remark"><label>${t('col_remark')}</label><input class="txt" data-f="remark" value="${esc(o.remark)}" placeholder="…"></div>
       <span class="lmeter">${esc(t('loadMeters', lm))}</span>
       <button class="icon del ghostdanger" data-act="del" title="${t('titleDelete')}">
@@ -220,7 +269,7 @@ function recalc(){
   const truck = TRUCKS[currentTruck];
   orders.forEach(o=>{ if(2*o.height > truck.h) o.stackable = false; });
   // manual mode: render the hand-arranged pallets instead of the computed layout
-  const layout = (typeof manualMode!=="undefined" && manualMode) ? manualLayout() : computeLayout();
+  const layout = (typeof manualMode!=="undefined" && manualMode) ? manualLayout() : currentLayout();
   renderTruck(layout);
   renderTotals(layout);
   renderInfo(layout);
@@ -246,9 +295,20 @@ function recalc(){
       chk.disabled = !possible; chk.checked = o.stackable;
       chk.closest(".fld").classList.toggle("disabled", !possible);
     }
+    // per-load assignment: clamp to capacity, refresh the value (unless focused) + status chips
+    const ai = card.querySelector('input[data-f="assignQty"]');
+    if(ai){
+      const al = activeLoad(), cap = assignCap(o);
+      let n = assignedOn(al, o);
+      if(n>cap){ n=cap; if(n>0) al.assign[o.id]=n; else delete al.assign[o.id]; }
+      if(document.activeElement!==ai) ai.value = n===0 ? "" : n;
+    }
+    const st = card.querySelector(".assignstat");
+    if(st) st.innerHTML = assignStatHtml(o);
+    card.classList.toggle("inactive", !onActive(o));
     // pixel-accurate band: highlight the row exactly under the cargo's X range in the truck plan
     const e = ext[o.id];
-    if(o.active && e && ctm){
+    if(onActive(o) && e && ctm){
       const rect = card.getBoundingClientRect();
       const lx = Math.max(0, Math.min(rect.width, toScreenX(e.x0) - rect.left));
       const rx = Math.max(0, Math.min(rect.width, toScreenX(e.x1) - rect.left));
@@ -261,5 +321,6 @@ function recalc(){
     }
   });
   updateHeadCtl();
+  renderTabs();   // keep tab pallet counts live after assignment edits
 }
 function renderAll(){ renderList(); recalc(); }

@@ -16,7 +16,66 @@ function rebuildTruckSelect(){
   truckSel.value = currentTruck;
 }
 rebuildTruckSelect();
-truckSel.addEventListener("change", e=>{ record(); currentTruck = e.target.value; renderAll(); });
+truckSel.addEventListener("change", e=>{
+  record(); currentTruck = e.target.value; activeLoad().truck = currentTruck; renderAll();
+});
+
+
+/* ---------- loads (tab bar above the graphic) ---------- */
+// leaving manual mode when the active load changes (the hand layout belongs to one load)
+function dropManualForSwitch(){ if(manualMode){ manualMode=false; manualPallets=null; syncManualUI(); } }
+function switchLoad(id){
+  if(id===activeLoadId || !loads.some(l=>l.id===id)) return;
+  dropManualForSwitch();
+  activeLoadId = id;
+  syncActiveLoadMirror();   // truck/name/note inputs follow the load
+  resetSearch();
+  renderAll();
+}
+function addLoad(){
+  record();
+  dropManualForSwitch();
+  const l = makeLoad({ truck: currentTruck });
+  loads.push(l); activeLoadId = l.id;
+  syncActiveLoadMirror();
+  renderAll();
+  notify("ok", t('loadAdded'), "", 2500);
+}
+function deleteLoad(id){
+  if(loads.length<=1) return;   // at least one load must remain
+  record();
+  const wasActive = (id===activeLoadId);
+  loads = loads.filter(l=>l.id!==id);
+  if(wasActive){ dropManualForSwitch(); activeLoadId = loads[0].id; syncActiveLoadMirror(); }
+  renderAll();
+}
+document.getElementById("loadTabs").addEventListener("click", e=>{
+  const del = e.target.closest("[data-loaddel]");
+  if(del){ e.stopPropagation(); deleteLoad(+del.dataset.loaddel); return; }
+  if(e.target.closest("[data-loadadd]")){ addLoad(); return; }
+  const tab = e.target.closest("[data-loadid]");
+  if(tab) switchLoad(+tab.dataset.loadid);
+});
+// double-click a tab -> rename the load inline
+document.getElementById("loadTabs").addEventListener("dblclick", e=>{
+  const tab = e.target.closest("[data-loadid]"); if(!tab) return;
+  const id = +tab.dataset.loadid, load = loads.find(l=>l.id===id); if(!load) return;
+  const nameSpan = tab.querySelector(".ltabname"); if(!nameSpan || tab.querySelector(".ltabedit")) return;
+  const inp = document.createElement("input");
+  inp.className = "ltabedit"; inp.value = load.name || ""; inp.placeholder = t('loadTab', loadIndex(load)+1);
+  nameSpan.replaceWith(inp);
+  inp.focus(); inp.select();
+  let done = false;
+  const commit = ()=>{ if(done) return; done = true; record(); load.name = inp.value.trim();
+    if(id===activeLoadId) loadName = load.name; renderTabs(); };
+  inp.addEventListener("blur", commit);
+  inp.addEventListener("keydown", ev=>{
+    if(ev.key==="Enter"){ ev.preventDefault(); inp.blur(); }
+    else if(ev.key==="Escape"){ done = true; renderTabs(); }
+  });
+  inp.addEventListener("click", ev=> ev.stopPropagation());
+  inp.addEventListener("dblclick", ev=> ev.stopPropagation());
+});
 
 /* ---------- settings (truck types + display) ---------- */
 const settingsModal = document.getElementById("settingsModal");
@@ -188,15 +247,19 @@ function manualLayout(){
 }
 // seed the manual pallets from the current automatic layout (starting point for editing)
 function seedManualFromAuto(){
-  const layout = computeLayout();
+  const layout = currentLayout();
   manualPallets = layout.placements.map((p,i)=>({
     pid:i+1, order:p.order, color:p.color, w:p.w, h:p.h, x:p.x, y:p.y, stack:p.stack }));
 }
+// reflect manualMode into the toolbar buttons + svg class (also used after undo/redo)
+function syncManualUI(){
+  document.getElementById("btnManual").classList.toggle("toggled", manualMode);
+  document.getElementById("btnCompact").style.display = manualMode ? "" : "none";
+  truckSvgEl.classList.toggle("manual", manualMode);
+}
 function setManualMode(on){
   manualMode = on;
-  document.getElementById("btnManual").classList.toggle("toggled", on);
-  document.getElementById("btnCompact").style.display = on ? "" : "none";
-  truckSvgEl.classList.toggle("manual", on);
+  syncManualUI();
   if(on){ seedManualFromAuto(); notify("ok", t('manualOn'), "", 3500); }
   else  { manualPallets = null;  notify("ok", t('manualOff'), "", 2500); }
   recalc();
@@ -207,6 +270,7 @@ document.getElementById("btnManual").addEventListener("click", ()=> setManualMod
 // another pallet (or the front wall). Eliminates every X gap; Y positions stay unchanged.
 function compactForward(){
   if(!manualMode || !manualPallets) return;
+  record();
   const placed = [];
   for(const p of [...manualPallets].sort((a,b)=> a.x-b.x || a.y-b.y)){
     let x = 0;
@@ -281,7 +345,8 @@ truckSvgEl.addEventListener("pointerdown", e=>{
   const pal = manualPallets.find(p=>p.pid==g.dataset.pid); if(!pal) return;
   const loc = svgMM(e); if(!loc) return;
   // do NOT preventDefault/capture here yet — that would swallow the click/dblclick (rotate)
-  drag = { pal, dx: loc.x - pal.x, dy: loc.y - pal.y, moved:false, pointerId:e.pointerId };
+  // capture the pre-move state now (the drag mutates positions live) so a real move is undoable
+  drag = { pal, dx: loc.x - pal.x, dy: loc.y - pal.y, moved:false, pointerId:e.pointerId, preState: captureState() };
 });
 truckSvgEl.addEventListener("pointermove", e=>{
   if(!drag) return;
@@ -310,10 +375,10 @@ truckSvgEl.addEventListener("pointermove", e=>{
 });
 truckSvgEl.addEventListener("pointerup", e=>{
   if(!drag) return;
-  const { pal, moved } = drag;
+  const { pal, moved, preState } = drag;
   try{ if(moved) truckSvgEl.releasePointerCapture(drag.pointerId); }catch(_){}
   drag = null;
-  if(moved){ snapPallet(pal); recalc(); }   // a plain click (no move) leaves the DOM intact -> dblclick can fire
+  if(moved){ pushUndo(preState); snapPallet(pal); recalc(); }   // a plain click (no move) leaves the DOM intact -> dblclick can fire
 });
 // double-click a pallet -> rotate (swap length/width) if it still fits the width
 truckSvgEl.addEventListener("dblclick", e=>{
@@ -322,6 +387,7 @@ truckSvgEl.addEventListener("dblclick", e=>{
   const pal = manualPallets.find(p=>p.pid==g.dataset.pid); if(!pal) return;
   if(pal.h > TRUCKS[currentTruck].w && pal.w > TRUCKS[currentTruck].w) return;
   if(pal.w > TRUCKS[currentTruck].w) return;   // rotated (new height = old width) would exceed width
+  record();
   const nw = pal.h, nh = pal.w; pal.w = nw; pal.h = nh;
   snapPallet(pal); recalc(); e.preventDefault();
 });
@@ -334,14 +400,14 @@ truckSvgEl.addEventListener("dblclick", e=>{
    Runner-compatible: expected = hand (or algo), baseline = algo. */
 function exportTestcase(){
   const truck = TRUCKS[currentTruck];
-  const active = orders.filter(o=>o.active && o.qty>0);
+  const active = loadOrders(activeLoad());   // virtual orders on the active load (qty = assigned)
   if(!active.length){ notify("warn", t('tNoExport')); return; }
   const idx = {}; active.forEach((o,i)=> idx[o.id]=i);
   const r = (mm,d=3)=> +(mm/1000).toFixed(d);
   const placementsOf = layout => layout.placements.map(p=>({
     oi: idx[p.order.id] ?? 0, x: Math.round(p.x), y: Math.round(p.y), w: p.w, h: p.h, stack: p.stack||1,
     overflow: !!p.overflow }));
-  const auto = computeLayout();
+  const auto = currentLayout();
   const fixture = {
     kind: "analysis",
     truckName: currentTruck,
@@ -376,6 +442,7 @@ function randomLoad(){
   if(manualMode) setManualMode(false);
   record();
   colorIdx = 0; orders = [];
+  loads = [makeLoad({ truck: currentTruck })]; activeLoadId = loads[0].id;   // single fresh load
   const sizes = [[1200,800],[1200,1000],[1200,830],[1200,1200],[1300,900],[1400,1000]];   // never smaller than 1200x800
   const pickMode = ()=>{ const r = Math.random(); return r < 0.75 ? "optimized" : r < 0.90 ? "long" : "wide"; };   // 75% / 15% / 10%
   const n = 2 + Math.floor(Math.random()*4);
@@ -389,6 +456,9 @@ function randomLoad(){
       active: true,
     }));
   }
+  loads[0].assign = {}; orders.forEach(o=> loads[0].assign[o.id] = o.qty);   // all pallets on the load
+  syncActiveLoadMirror();
+  revealNewOrders();
   renderAll();
   notify("ok", t('randomCreated'), "", 4000);
 }
@@ -400,7 +470,7 @@ function addOrder(){
   record();
   const o = makeOrder({length:1200, width:800, height:1200, qty:1, sequence:1});
   orders.push(o);
-  if(hideInactive) hideInactive = false;   // new order is inactive -> turn filter off so it is visible
+  revealNewOrders();   // new (inactive) order -> un-hide inactive + clear the search so it is visible
   renderAll();
   // scroll to the new order and focus the order number
   const row = document.querySelector(`.order[data-id="${o.id}"]`);
@@ -417,16 +487,19 @@ function addOrder(){
 document.getElementById("btnAdd").addEventListener("click", addOrder);
 document.getElementById("btnRefresh").addEventListener("click", renderAll);
 document.getElementById("btnUndo").addEventListener("click", undo);
+document.getElementById("btnRedo").addEventListener("click", redo);
 
 // reflect the inline header controls' state (hide-inactive on/off + inactive count) without a full re-render
 function updateHeadCtl(){
-  const inact = orders.filter(o=>!o.active).length;
+  const inact = orders.filter(o=>!onActive(o)).length;
+  const filtering = !!filterText;
   const hb = document.querySelector('#listHead [data-listact="hideInactive"]');
   if(!hb) return;
   hb.classList.toggle("on", hideInactive);
-  hb.title = hideInactive ? t('hideShow') : t('hideHide');
+  hb.classList.toggle("filtering", filtering);
+  hb.title = filtering ? t('hideSearch') : (hideInactive ? t('hideShow') : t('hideHide'));
   let cnt = hb.querySelector(".cnt");
-  if(hideInactive && inact>0){   // badge shows how many are currently hidden
+  if(hideInactive && !filtering && inact>0){   // badge shows how many are currently hidden
     if(!cnt){ cnt = document.createElement("span"); cnt.className = "cnt"; hb.appendChild(cnt); }
     cnt.textContent = inact;
   } else if(cnt){ cnt.remove(); }
@@ -443,9 +516,58 @@ document.getElementById("btnNote").addEventListener("click", ()=>{
 });
 document.getElementById("noteCancel").addEventListener("click", ()=> noteModal.classList.remove("open"));
 document.getElementById("noteOk").addEventListener("click", ()=>{
-  loadNote = noteArea.value; updateNoteBtn(); noteModal.classList.remove("open");
+  if(noteArea.value !== loadNote) record();
+  loadNote = noteArea.value; activeLoad().note = loadNote; updateNoteBtn(); noteModal.classList.remove("open");
 });
 noteModal.addEventListener("click", e=>{ if(e.target===noteModal) noteModal.classList.remove("open"); });
+
+// "»"-overflow dialog: fill the active load, optionally spread the rest over new loads
+const splitModal = document.getElementById("splitModal");
+let splitPending = null;   // { oid, nFit, cap }
+function closeSplit(){ splitModal.classList.remove("open"); splitPending = null; }
+function applyFit(o, n){ const al = activeLoad(); if(n>0) al.assign[o.id] = n; else delete al.assign[o.id]; }
+// (re)compute the dialog texts for the currently selected truck type
+function updateSplitDialog(){
+  if(!splitPending) return;
+  const o = orders.find(x=>x.id===splitPending.oid); if(!o) return;
+  const truckName = document.getElementById("splitTruck").value;
+  const need = loadsNeeded(o, splitPending.cap - splitPending.nFit, truckName);
+  splitPending.truckName = truckName; splitPending.need = need;
+  document.getElementById("splitCreatePre").textContent = t('splitCreatePre', need.loads);
+  document.getElementById("splitFillOnly").textContent = t('splitFillBtn', splitPending.nFit, splitPending.cap);
+  document.getElementById("splitCreate").classList.toggle("disabled", need.loads<=0);
+}
+const splitTruckSel = document.getElementById("splitTruck");
+splitTruckSel.addEventListener("change", updateSplitDialog);
+splitTruckSel.addEventListener("click", e=> e.stopPropagation());   // choosing the type must not trigger "create"
+splitTruckSel.addEventListener("mousedown", e=> e.stopPropagation());
+document.getElementById("splitClose").addEventListener("click", closeSplit);
+splitModal.addEventListener("click", e=>{ if(e.target===splitModal) closeSplit(); });
+document.getElementById("splitFillOnly").addEventListener("click", ()=>{
+  if(!splitPending) return;
+  const o = orders.find(x=>x.id===splitPending.oid); if(!o){ closeSplit(); return; }
+  record(); applyFit(o, splitPending.nFit);
+  closeSplit(); if(manualMode) seedManualFromAuto(); recalc();
+});
+document.getElementById("splitCreate").addEventListener("click", ()=>{
+  if(!splitPending) return;
+  if(document.getElementById("splitCreate").classList.contains("disabled")) return;
+  const o = orders.find(x=>x.id===splitPending.oid); if(!o){ closeSplit(); return; }
+  const tn = splitPending.truckName || activeLoad().truck;
+  record();
+  applyFit(o, splitPending.nFit);
+  let remaining = splitPending.cap - splitPending.nFit, created = 0, guard = 0;
+  while(remaining>0 && guard++ < 99){
+    const nl = makeLoad({ truck: tn }); loads.push(nl);
+    const n = fitCount(nl, o, remaining);
+    if(n<=0){ loads = loads.filter(l=>l.id!==nl.id); break; }   // pallet too big even for an empty truck
+    nl.assign[o.id] = n; remaining -= n; created++;
+  }
+  closeSplit();
+  if(manualMode) seedManualFromAuto();
+  renderAll();
+  notify("ok", t('splitDone', created) + (remaining>0 ? " "+t('splitRest', remaining) : ""), "", 4500);
+});
 
 // export as JSON
 const nameModal = document.getElementById("nameModal");
@@ -454,17 +576,29 @@ const expNote = document.getElementById("expNote");
 const pad2 = n => String(n).padStart(2,"0");
 function defaultExportName(){
   const d = new Date();
-  return `LKW-Ladung ${pad2(d.getDate())}.${pad2(d.getMonth()+1)}.${d.getFullYear()} ${pad2(d.getHours())}-${pad2(d.getMinutes())}`;
+  const stamp = `${pad2(d.getDate())}.${pad2(d.getMonth()+1)}.${d.getFullYear()} ${pad2(d.getHours())}-${pad2(d.getMinutes())}`;
+  const base = loadName.trim() || "LKW-Ladung";   // a load name replaces the "LKW-Ladung" prefix
+  return `${base} ${stamp}`;
 }
 function doExport(name){
-  loadNote = expNote.value; updateNoteBtn();
+  loadNote = expNote.value; activeLoad().note = loadNote; updateNoteBtn();
   const inclInactive = document.getElementById("expInclInactive").checked;
-  const exportable = inclInactive ? orders : orders.filter(o=>o.active);
-  const data = { app:"lkw-planer", version:1, truck:currentTruck, note:loadNote,
-    orders: exportable.map(o=>({ orderNo:o.orderNo, customer:o.customer, deliveryDate:o.deliveryDate,
+  // pool to export: all orders, or only those that sit on at least one load
+  const pool = inclInactive ? orders : orders.filter(o=> assignedTotal(o)>0);
+  const usedTrucks = {};
+  for(const l of loads) if(TRUCKS[l.truck]) usedTrucks[l.truck] = TRUCKS[l.truck];
+  const data = {
+    app:"lkw-planer", version:2,
+    activeLoad: Math.max(0, loads.findIndex(l=>l.id===activeLoadId)),
+    trucks: usedTrucks,
+    loads: loads.map(l=>({ name:l.name, truck:l.truck, note:l.note,
+      assign: pool.map(o=> l.assign[o.id]|0) })),   // pallet counts aligned to the orders index
+    orders: pool.map(o=>({ orderNo:o.orderNo, customer:o.customer, deliveryDate:o.deliveryDate,
       destCode:o.destCode, qty:o.qty, length:o.length, width:o.width, height:o.height,
-      loadMode:o.loadMode, sequence:o.sequence, stackable:o.stackable, active:o.active,
-      remark:o.remark, color:o.color })) };
+      loadMode:o.loadMode, sequence:o.sequence, stackable:o.stackable, remark:o.remark, color:o.color })),
+    // legacy mirrors (active load) so an older importer still finds a usable single load
+    truck: currentTruck, name: loadName, note: loadNote,
+  };
   let fname = (name||"").trim().replace(/[\\/:*?"<>|]/g,"-") || defaultExportName();
   if(!/\.json$/i.test(fname)) fname += ".json";
   const blob = new Blob([JSON.stringify(data, null, 2)], {type:"application/json"});
@@ -473,7 +607,7 @@ function doExport(name){
   a.href = url; a.download = fname;
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
-  notify("ok", t('exported', exportable.length), fname, 4000);
+  notify("ok", t('exported', pool.length), fname, 4000);
 }
 document.getElementById("btnExport").addEventListener("click", ()=>{
   if(orders.length===0){ notify("warn", t('tNoExport')); return; }
@@ -530,8 +664,10 @@ function buildPrintSvg(layout){
 // print stylesheet — lives inside the print iframe (default landscape, wider remark column)
 const PRINT_CSS = `
   *{box-sizing:border-box}
-  /* @page margin:0 leaves no room for the browser's header/footer (URL/date) -> the body padding becomes the visual margin */
-  body{margin:0;color:#000;background:#fff;padding:10mm 12mm;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;}
+  /* @page margin:0 suppresses the browser header/footer; each .page provides its own margin -> one A4 sheet per load */
+  body{margin:0;color:#000;background:#fff;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;}
+  .page{padding:10mm 12mm;break-after:page;}
+  .page:last-child{break-after:auto;}
   h1{font-size:18px;margin:0 0 4px;}
   h2{font-size:13px;margin:12px 0 5px;}
   .pmeta{font-size:11.5px;line-height:1.5;margin-bottom:8px;}
@@ -543,41 +679,50 @@ const PRINT_CSS = `
   th{background:#eee;}
   th:last-child,td:last-child{width:32%;}
   .pal-label{font-weight:700;fill:#11203a;paint-order:stroke;stroke:rgba(255,255,255,.75);stroke-width:60px;}
-  @page{size:landscape;margin:0;}
+  @page{size:A4 landscape;margin:0;}
 `;
-// print view / PDF: rendered in a hidden about:blank iframe so the PDF footer carries no file path
-function buildPrintView(){
-  const layout = manualMode ? manualLayout() : computeLayout();   // print the hand-arranged layout in manual mode
+// one print page (one A4 sheet) for a single load
+function buildLoadPage(load){
+  const layout = (manualMode && load.id===activeLoadId) ? manualLayout()
+               : computeLayout(loadOrders(load), TRUCKS[load.truck] || TRUCKS[currentTruck]);
   const truck = layout.truck;
-  const active = orders.filter(o=>o.active && o.qty>0);
+  const ords = loadOrders(load);
   const usedM = (Math.ceil(layout.usedLength/100)/10).toFixed(1);
   const Lm = truck.l/1000;
   const freeM = Math.max(0, Math.round((Lm - usedM)*10)/10).toFixed(1);
-  const totalPal = active.reduce((s,o)=>s+o.qty,0);
+  const totalPal = ords.reduce((s,o)=>s+o.qty,0);
   const over = layout.placements.filter(p=>p.overflow).reduce((s,p)=>s+(p.stack||1),0);
   const d = new Date();
   const dateStr = `${pad2(d.getDate())}.${pad2(d.getMonth()+1)}.${d.getFullYear()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-  const fitTxt = active.length ? (layout.fits ? t('fitOk') : t('fitBad', over)) : "";
+  const fitTxt = ords.length ? (layout.fits ? t('fitOk') : t('fitBad', over)) : "";
   const dims = `${Lm.toFixed(2)} × ${(truck.w/1000).toFixed(2)} × ${(truck.h/1000).toFixed(2)} m`;
   const th = [t('col_orderNo'),t('col_customer'),t('col_deliveryDate'),t('col_destCode'),t('col_qty'),
               t('printDims'),t('col_sequence'),t('printLmCol'),t('col_remark')]
               .map(x=>`<th>${esc(x)}</th>`).join("");
-  const rows = active.map(o=>{
+  const rows = ords.map(o=>{
     return `<tr><td>${esc(o.orderNo)}</td><td>${esc(o.customer)}</td><td>${esc(o.deliveryDate)}</td>`+
       `<td>${esc(o.destCode)}</td><td>${o.qty}</td><td>${o.length} × ${o.width} × ${o.height}</td>`+
       `<td>${o.sequence}</td><td>${orderLoadMeters(o,truck).toFixed(1)}</td>`+
       `<td>${esc(o.remark||"")}</td></tr>`;
   }).join("");
-  const remarks = loadNote.trim()
-    ? `<div class="premarks"><b>${t('printRemarks')}:</b> ${esc(loadNote)}</div>` : "";
-  return `<h1>${t('printTitle')}</h1>`+
-    `<div class="pmeta"><b>${t('printDate')}:</b> ${dateStr} &nbsp;·&nbsp; <b>${t('truckLabel')}:</b> ${esc(currentTruck)} (${dims})<br>`+
+  const remarks = (load.note||"").trim()
+    ? `<div class="premarks"><b>${t('printRemarks')}:</b> ${esc(load.note)}</div>` : "";
+  return `<section class="page">`+
+    `<h1>${t('printTitle')} — ${esc(loadLabel(load))}</h1>`+
+    `<div class="pmeta"><b>${t('printDate')}:</b> ${dateStr} &nbsp;·&nbsp; <b>${t('truckLabel')}:</b> ${esc(load.truck)} (${dims})<br>`+
     `<b>${t('used')}</b> ${usedM} m &nbsp;·&nbsp; <b>${t('free')}</b> ${freeM} m &nbsp;·&nbsp; ${esc(t('palCount',totalPal))}`+
     (fitTxt ? ` &nbsp;·&nbsp; ${esc(fitTxt)}` : "") + `</div>`+
     `<div class="psvg">${buildPrintSvg(layout)}</div>`+
     remarks +
     `<h2>${t('printOrders')}</h2>`+
-    `<table><thead><tr>${th}</tr></thead><tbody>${rows}</tbody></table>`;
+    `<table><thead><tr>${th}</tr></thead><tbody>${rows}</tbody></table>`+
+    `</section>`;
+}
+// print: ALL loads, one A4 sheet per load (loads with at least one pallet; else the active load)
+function buildPrintView(){
+  const withPal = loads.filter(l => orders.some(o => (l.assign[o.id]|0) > 0));
+  const list = withPal.length ? withPal : [activeLoad()];
+  return list.map(buildLoadPage).join("");
 }
 // print the load: render the HTML in a separate about:blank window so the PDF footer has no file path.
 // (Printing a hidden iframe does NOT work — Chrome puts the parent document's file:// path in the footer.)
@@ -625,16 +770,45 @@ fileImport.addEventListener("change", e=>{
         stackable:!!d.stackable, active:!!d.active, remark:d.remark||"",
         ...(d.color ? {color:d.color} : {}),
       }));
-      // truck: name string (JSON export) or {l,w,h} object (analysis file)
-      if(typeof data.truck==="string" && TRUCKS[data.truck]){ currentTruck = data.truck; truckSel.value = currentTruck; }
-      else if(data.truck && typeof data.truck==="object"){
-        const T = data.truck, nm0 = data.truckName;
-        let nm = (nm0 && TRUCKS[nm0] && TRUCKS[nm0].l===T.l && TRUCKS[nm0].w===T.w && TRUCKS[nm0].h===T.h) ? nm0 : null;
-        if(!nm){ nm = (nm0 ? nm0+" (Import)" : "Import"); TRUCKS[nm] = {l:T.l, w:T.w, h:T.h}; saveTrucks(); rebuildTruckSelect(); }
-        currentTruck = nm; truckSel.value = nm;
+      // register any truck types shipped with the file (multi-load files carry a `trucks` map)
+      if(data.trucks && typeof data.trucks==="object"){
+        let added = false;
+        for(const [nm,T] of Object.entries(data.trucks)){
+          if(T && typeof T==="object" && !TRUCKS[nm]){ TRUCKS[nm] = {l:+T.l, w:+T.w, h:+T.h}; added = true; }
+        }
+        if(added){ saveTrucks(); rebuildTruckSelect(); }
       }
-      loadNote = (data && typeof data.note==="string") ? data.note : "";
-      updateNoteBtn();
+      // rebuild the loads
+      loadSeq = 1;
+      if(Array.isArray(data.loads)){
+        // multi-load format: assign arrays aligned to the orders index
+        loads = data.loads.map(L=>{
+          const tn = (L && L.truck && TRUCKS[L.truck]) ? L.truck : currentTruck;
+          const load = makeLoad({ name:(L&&L.name)||"", truck:tn, note:(L&&L.note)||"" });
+          const arr = (L && Array.isArray(L.assign)) ? L.assign : [];
+          orders.forEach((o,i)=>{ const n = arr[i]|0; if(n>0) load.assign[o.id] = Math.min(n, o.qty|0); });
+          return load;
+        });
+        if(!loads.length) loads = [makeLoad()];
+        const ai = Math.max(0, Math.min(loads.length-1, +data.activeLoad||0));
+        activeLoadId = loads[ai].id;
+      } else {
+        // legacy single-load: truck name string OR {l,w,h} object (analysis file), assign active orders fully
+        let tn = currentTruck;
+        if(typeof data.truck==="string" && TRUCKS[data.truck]) tn = data.truck;
+        else if(data.truck && typeof data.truck==="object"){
+          const T = data.truck, nm0 = data.truckName;
+          let nm = (nm0 && TRUCKS[nm0] && TRUCKS[nm0].l===T.l && TRUCKS[nm0].w===T.w && TRUCKS[nm0].h===T.h) ? nm0 : null;
+          if(!nm){ nm = (nm0 ? nm0+" (Import)" : "Import"); TRUCKS[nm] = {l:+T.l, w:+T.w, h:+T.h}; saveTrucks(); rebuildTruckSelect(); }
+          tn = nm;
+        }
+        const load = makeLoad({ name:(typeof data.name==="string"?data.name:""), truck:tn,
+          note:(typeof data.note==="string"?data.note:"") });
+        orders.forEach(o=>{ if(o.active && o.qty>0) load.assign[o.id] = o.qty; });
+        loads = [load]; activeLoadId = load.id;
+      }
+      syncActiveLoadMirror();   // currentTruck/name/note + inputs follow the active load
+      revealNewOrders();        // freshly imported orders -> un-hide + clear the search
       // analysis file with a hand-optimised layout -> show it in manual mode for inspection
       if(data.hand && Array.isArray(data.hand.placements) && manualMode) setManualMode(false);
       renderAll();
@@ -679,7 +853,11 @@ btnReset.addEventListener("click", ()=>{
   }
   disarmReset();
   record();
-  orders = []; colorIdx = 0; loadNote = ""; updateNoteBtn(); renderAll();
+  orders = []; colorIdx = 0;
+  loads = [makeLoad({ truck: currentTruck })]; activeLoadId = loads[0].id;   // back to one empty load
+  hideInactive = false; resetSearch();   // "clear all" also clears the search filter
+  manualMode = false; manualPallets = null; syncManualUI();
+  syncActiveLoadMirror(); renderAll();
 });
 // a click elsewhere disarms the reset again
 document.addEventListener("click", e=>{ if(resetArmed && !btnReset.contains(e.target)) disarmReset(); });
@@ -697,8 +875,8 @@ list.addEventListener("input", e=>{
   } else {
     o[f] = e.target.value;
   }
-  if(["length","width","height","qty","loadMode","sequence"].includes(f)){
-    if(manualMode) seedManualFromAuto();   // qty/size/sequence change the pallet set -> rebuild the hand layout
+  if(["length","width","height","qty","loadMode","sequence","assignQty"].includes(f)){
+    if(manualMode) seedManualFromAuto();   // qty/size/sequence/assignment change the pallet set -> rebuild the hand layout
     recalc();
   }
 });
@@ -707,11 +885,9 @@ list.addEventListener("change", e=>{
   const o = orders.find(x=>x.id==card.dataset.id); if(!o) return;
   const f = e.target.dataset.f;
   if(f==="stackable"){ record(); o.stackable = e.target.checked; }
-  else if(f==="active"){ record(); o.active = e.target.checked;
-    if(hideInactive) renderList(); else card.classList.toggle("inactive",!o.active); }
   else if(f==="loadMode"){ record(); o.loadMode = e.target.value; renderList(); }
   else return;
-  // structural change (stacking/active/load mode changes the pallet set) -> rebuild the hand layout
+  // structural change (stacking/load mode changes the pallet set) -> rebuild the hand layout
   if(manualMode) seedManualFromAuto();
   recalc();
 });
@@ -722,6 +898,35 @@ list.addEventListener("click", e=>{
   if(act==="del"){ record(); orders = orders.filter(x=>x.id!==o.id); renderAll(); }
   else if(act==="inc"){ record(); o.sequence = Math.min(99,(+o.sequence||0)+1); renderList(); recalc(); }
   else if(act==="dec"){ record(); o.sequence = Math.max(1,(+o.sequence||1)-1); renderList(); recalc(); }
+  else if(act==="fillFit"){
+    // load as many of this order's pallets as still fit on the active load's truck
+    const al = activeLoad(), nFit = maxFitOnActive(o), cap = assignCap(o), cur = al.assign[o.id]|0;
+    if(nFit >= cap){
+      // Case A: everything that may go on this load fits -> just load it
+      if(nFit === cur){ notify("warn", t('fillNone')); return; }
+      record();
+      if(cap>0) al.assign[o.id] = cap; else delete al.assign[o.id];
+      if(manualMode) seedManualFromAuto();
+      recalc();
+    } else {
+      // Case B: load too large -> ask whether to create more loads (truck type selectable)
+      splitPending = { oid:o.id, nFit, cap };
+      const sel = document.getElementById("splitTruck");
+      sel.innerHTML = Object.keys(TRUCKS).map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join("");
+      sel.value = al.truck;   // preselect the active tab's truck type
+      updateSplitDialog();
+      splitModal.classList.add("open");
+    }
+  }
+  else if(act==="clearAssign"){
+    // remove this order entirely from the active load
+    const al = activeLoad();
+    if(!(al.assign[o.id]|0)) return;   // already not on this load
+    record();
+    delete al.assign[o.id];
+    if(manualMode) seedManualFromAuto();
+    recalc();
+  }
 });
 // sortable column headers
 list.addEventListener("click", e=>{
@@ -783,6 +988,14 @@ function handleNumInput(input, o, f){
   } else if(f==="qty"){
     let v = input.value.replace(/[^0-9]/g,""); input.value=v;
     o.qty = parseInt(v,10)||0;
+  } else if(f==="assignQty"){
+    // pallets of this order on the ACTIVE load (0 .. total minus what other loads hold)
+    let v = input.value.replace(/[^0-9]/g,"");
+    let n = parseInt(v,10); if(!Number.isFinite(n)) n = 0;
+    n = Math.max(0, Math.min(assignCap(o), n));
+    input.value = (v==="" ) ? "" : n;
+    const al = activeLoad();
+    if(n>0) al.assign[o.id] = n; else delete al.assign[o.id];
   } else if(f==="sequence"){
     let v = input.value.replace(/[^0-9]/g,"");
     let n = parseInt(v,10); if(!Number.isFinite(n)) n=1; n=Math.max(1,Math.min(99,n));
@@ -825,6 +1038,7 @@ function importText(txt){
     toAdd.forEach(o=>{ o.stackable = (2*o.height <= truck.h); }); // default stackable
     record();
     orders.push(...toAdd);
+    revealNewOrders();   // newly pasted orders -> un-hide inactive + clear the search
     renderAll();
   }
   // assemble hints
@@ -854,13 +1068,15 @@ function notify(type, titleHtml, detail="", timeoutMs=5000){
   if(timeoutMs>0) setTimeout(()=>el.remove(), timeoutMs);
 }
 
-// keyboard shortcut Ctrl+Z (not in text fields, native undo applies there)
+// keyboard shortcuts: Ctrl+Z = undo, Ctrl+Y / Ctrl+Shift+Z = redo
+// (not while editing a text field — native undo/redo applies there)
 document.addEventListener("keydown", e=>{
-  if((e.ctrlKey||e.metaKey) && !e.shiftKey && e.key.toLowerCase()==="z"){
-    const t = e.target.tagName;
-    if(t==="INPUT" || t==="TEXTAREA") return;   // native undo in the field
-    e.preventDefault(); undo();
-  }
+  if(!(e.ctrlKey||e.metaKey)) return;
+  const tag = e.target.tagName;
+  if(tag==="INPUT" || tag==="TEXTAREA") return;   // native undo/redo in the field
+  const k = e.key.toLowerCase();
+  if(k==="z" && !e.shiftKey){ e.preventDefault(); undo(); }
+  else if(k==="y" || (k==="z" && e.shiftKey)){ e.preventDefault(); redo(); }
 });
 
 // list-level controls outside the order rows: header icons + footer buttons (event delegation)
@@ -868,10 +1084,12 @@ list.addEventListener("click", e=>{
   const b = e.target.closest("[data-listact]"); if(!b) return;
   switch(b.dataset.listact){
     case "allInactive":
-      if(!orders.some(o=>o.active)) return;
-      record(); orders.forEach(o=> o.active = false); renderAll(); break;
+      if(!orders.some(o=>onActive(o))) return;
+      record(); activeLoad().assign = {}; renderAll(); break;
     case "hideInactive":
-      hideInactive = !hideInactive; renderAll(); break;
+      hideInactive = !hideInactive;
+      if(!hideInactive) resetSearch();   // "show inactive again" also clears the search filter
+      renderAll(); break;
     case "add":   addOrder(); break;
     case "paste": openPaste(); break;
   }
@@ -886,6 +1104,20 @@ function wireSearch(){
     filterText = e.target.value.trim().toLowerCase();
     renderList(); recalc();   // recalc re-applies per-row bands for the now-visible rows
   });
+}
+// clear the active search filter + the search input
+function resetSearch(){
+  filterText = "";
+  const s = document.getElementById("search"); if(s) s.value = "";
+}
+// reflect the current filterText into the search box (after undo/redo/import)
+function syncSearchInput(){
+  const s = document.getElementById("search"); if(s) s.value = filterText;
+}
+// new orders coming in -> make them visible again (un-hide inactive + drop the search filter)
+function revealNewOrders(){
+  hideInactive = false;
+  resetSearch();
 }
 
 // re-align the per-row position bands when the truck graphic rescales (debounced)

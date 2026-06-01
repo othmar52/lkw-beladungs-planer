@@ -30,6 +30,9 @@
     <button id="btnUndo" class="icon" title="Rückgängig (Strg+Z)" data-i18n-title="titleUndo" disabled>
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a6 6 0 0 1 0 12H9"/></svg>
     </button>
+    <button id="btnRedo" class="icon" title="Wiederholen (Strg+Y)" data-i18n-title="titleRedo" disabled>
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 14l5-5-5-5"/><path d="M20 9H9a6 6 0 0 0 0 12h6"/></svg>
+    </button>
     <div class="spacer"></div>
     <button id="btnExport" class="icon" title="Ladung als JSON exportieren" data-i18n-title="titleExport">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M8 11l4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
@@ -61,6 +64,7 @@
     </button>
     <button id="btnReset" class="ghostdanger"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M6 6l1 14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-14"/></svg><span id="resetLabel" data-i18n="resetLabel">Alle löschen / Reset</span></button>
   </div>
+  <div id="loadTabs"></div>
   <div id="stageWrap">
     <div id="stage">
       <div id="truckBox"><svg id="truckSvg" preserveAspectRatio="xMidYMid meet"></svg></div>
@@ -118,6 +122,21 @@
   </div>
 </div>
 
+<div id="splitModal">
+  <div class="modalbox">
+    <button id="splitClose" class="modalx" title="Schließen" data-i18n-title="btnClose">×</button>
+    <h3 data-i18n="splitTitle">Palettenanzahl zu hoch</h3>
+    <div class="splitactions">
+      <div id="splitCreate" class="splitcreate" role="button" tabindex="0">
+        <span id="splitCreatePre"></span>
+        <select id="splitTruck" class="txt"></select>
+        <span id="splitCreatePost" data-i18n="splitCreatePost">erstellen</span>
+      </div>
+      <button id="splitFillOnly"></button>
+    </div>
+  </div>
+</div>
+
 <div id="settingsModal">
   <div class="modalbox settingsbox">
     <h3 data-i18n="setTitle">Einstellungen</h3>
@@ -134,7 +153,7 @@
     <h4 data-i18n="setLanguage">Sprache / Language</h4>
     <select id="langSel" class="txt" style="width:auto"><option value="de">Deutsch</option><option value="en">English</option><option value="hu">Magyar</option></select>
     <h4 data-i18n="setDisplay">Anzeige</h4>
-    <label class="chk"><input type="checkbox" id="setCrosshair"> <span data-i18n="setCrosshair">Fadenkreuz / Distanzanzeige beim Überfahren freier Lücken</span></label>
+    <label class="chk switch"><input type="checkbox" class="toggle" id="setCrosshair"> <span data-i18n="setCrosshair">Fadenkreuz / Distanzanzeige beim Überfahren freier Lücken</span></label>
     <div class="modalbtns">
       <button id="setResetTrucks" class="ghostdanger" data-i18n="setResetTrucks">Standard-LKW wiederherstellen</button>
       <button id="settingsClose" class="primary" data-i18n="btnClose">Schließen</button>
