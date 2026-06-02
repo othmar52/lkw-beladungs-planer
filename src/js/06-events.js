@@ -17,36 +17,66 @@ function rebuildTruckSelect(){
 }
 rebuildTruckSelect();
 truckSel.addEventListener("change", e=>{
-  record(); currentTruck = e.target.value; activeLoad().truck = currentTruck; renderAll();
+  record(t('hist_truck')); currentTruck = e.target.value; activeLoad().truck = currentTruck; renderAll();
 });
 
 
 /* ---------- loads (tab bar above the graphic) ---------- */
-// leaving manual mode when the active load changes (the hand layout belongs to one load)
-function dropManualForSwitch(){ if(manualMode){ manualMode=false; manualPallets=null; syncManualUI(); } }
+// hand-layout per load (transient, NOT in undo/redo) -> manual mode survives tab switches
+// Hand mode is tracked PER LOAD: each load remembers whether it is in manual mode (manualOnByLoad)
+// and its edited hand layout (manualByLoad). The globals manualMode/manualPallets always mirror the
+// ACTIVE load, so all existing `if(manualMode)` checks keep working — but switching loads no longer
+// drags one load's hand state onto another (and never discards an edited load's layout).
+const manualByLoad = {};     // loadId -> hand-layout pallets (kept while that load is in manual mode)
+const manualOnByLoad = {};   // loadId -> bool: is this load in manual mode?
+function stashManual(){
+  manualOnByLoad[activeLoadId] = manualMode;
+  if(manualMode && manualPallets) manualByLoad[activeLoadId] = manualPallets;
+}
+// after activeLoadId changed: adopt the (now active) load's own manual on/off + hand layout
+function restoreManual(){
+  manualMode = !!manualOnByLoad[activeLoadId];
+  if(manualMode){
+    const saved = manualByLoad[activeLoadId];
+    if(saved && saved.length) manualPallets = saved; else seedManualFromAuto();
+  } else {
+    manualPallets = null;
+  }
+  if(typeof syncManualUI==="function") syncManualUI();   // toolbar button + svg class follow the active load
+}
+// after undo/redo restores the active load's manual state from the snapshot, keep the per-load maps in sync
+function syncActiveManualState(){
+  manualOnByLoad[activeLoadId] = manualMode;
+  if(manualMode && manualPallets) manualByLoad[activeLoadId] = manualPallets;
+}
+// wipe the per-load hand state (used when the whole load set is replaced; load ids may be reused)
+function clearManualMaps(){ for(const k in manualByLoad) delete manualByLoad[k]; for(const k in manualOnByLoad) delete manualOnByLoad[k]; }
 function switchLoad(id){
   if(id===activeLoadId || !loads.some(l=>l.id===id)) return;
-  dropManualForSwitch();
+  stashManual();
   activeLoadId = id;
   syncActiveLoadMirror();   // truck/name/note inputs follow the load
   resetSearch();
+  restoreManual();
   renderAll();
 }
 function addLoad(){
-  record();
-  dropManualForSwitch();
+  record(t('hist_loadAdd'));
+  stashManual();
   const l = makeLoad({ truck: currentTruck });
   loads.push(l); activeLoadId = l.id;
   syncActiveLoadMirror();
+  restoreManual();   // a brand-new load starts in its own (non-manual) state
   renderAll();
   notify("ok", t('loadAdded'), "", 2500);
 }
 function deleteLoad(id){
   if(loads.length<=1) return;   // at least one load must remain
-  record();
+  record(t('hist_loadDel'));
   const wasActive = (id===activeLoadId);
   loads = loads.filter(l=>l.id!==id);
-  if(wasActive){ dropManualForSwitch(); activeLoadId = loads[0].id; syncActiveLoadMirror(); }
+  delete manualByLoad[id]; delete manualOnByLoad[id];
+  if(wasActive){ activeLoadId = loads[0].id; syncActiveLoadMirror(); restoreManual(); }
   renderAll();
 }
 document.getElementById("loadTabs").addEventListener("click", e=>{
@@ -56,25 +86,36 @@ document.getElementById("loadTabs").addEventListener("click", e=>{
   const tab = e.target.closest("[data-loadid]");
   if(tab) switchLoad(+tab.dataset.loadid);
 });
-// double-click a tab -> rename the load inline
-document.getElementById("loadTabs").addEventListener("dblclick", e=>{
-  const tab = e.target.closest("[data-loadid]"); if(!tab) return;
-  const id = +tab.dataset.loadid, load = loads.find(l=>l.id===id); if(!load) return;
+// inline rename of a load tab; Tab/Shift+Tab jumps to the next/previous tab's name
+function startRenameTab(id){
+  const load = loads.find(l=>l.id===id); if(!load) return;
+  const tab = document.querySelector(`#loadTabs [data-loadid="${id}"]`); if(!tab) return;
   const nameSpan = tab.querySelector(".ltabname"); if(!nameSpan || tab.querySelector(".ltabedit")) return;
   const inp = document.createElement("input");
   inp.className = "ltabedit"; inp.value = load.name || ""; inp.placeholder = t('loadTab', loadIndex(load)+1);
   nameSpan.replaceWith(inp);
   inp.focus(); inp.select();
   let done = false;
-  const commit = ()=>{ if(done) return; done = true; record(); load.name = inp.value.trim();
+  const commit = ()=>{ if(done) return; done = true; record(t('hist_loadRename')); load.name = inp.value.trim();
     if(id===activeLoadId) loadName = load.name; renderTabs(); };
   inp.addEventListener("blur", commit);
   inp.addEventListener("keydown", ev=>{
     if(ev.key==="Enter"){ ev.preventDefault(); inp.blur(); }
     else if(ev.key==="Escape"){ done = true; renderTabs(); }
+    else if(ev.key==="Tab"){
+      ev.preventDefault();
+      const idx = loads.findIndex(l=>l.id===id);
+      const step = ev.shiftKey ? loads.length-1 : 1;
+      const nextId = loads[(idx+step) % loads.length].id;
+      commit();
+      if(nextId!==id) startRenameTab(nextId);   // chain into the next tab's name
+    }
   });
   inp.addEventListener("click", ev=> ev.stopPropagation());
   inp.addEventListener("dblclick", ev=> ev.stopPropagation());
+}
+document.getElementById("loadTabs").addEventListener("dblclick", e=>{
+  const tab = e.target.closest("[data-loadid]"); if(tab) startRenameTab(+tab.dataset.loadid);
 });
 
 /* ---------- settings (truck types + display) ---------- */
@@ -146,12 +187,34 @@ setCrosshair.addEventListener("change", ()=>{
 document.getElementById("langSel").addEventListener("change", e=>{
   settings.lang = e.target.value; saveSettings();
   applyStatic();   // static texts
+  renderAlgoOptions();
   renderAll();     // dynamic content (list/graphic/info/totals/labels)
+});
+// loading-algorithm picker (currently one; prepared for variants). Each option carries a tooltip;
+// the info paragraph shows the selected algo's description.
+const ALGOS = [{ id:"standard", name:"algoStandard", info:"algoStandardInfo" }];
+const algoSel = document.getElementById("algoSel");
+function updateAlgoInfo(){ const a = ALGOS.find(x=>x.id===algoSel.value) || ALGOS[0];
+  document.getElementById("algoInfo").textContent = t(a.info); }
+function renderAlgoOptions(){
+  algoSel.innerHTML = ALGOS.map(a=>`<option value="${a.id}" title="${esc(t(a.info))}">${esc(t(a.name))}</option>`).join("");
+  algoSel.value = ALGOS.some(a=>a.id===settings.algo) ? settings.algo : "standard";
+  updateAlgoInfo();
+}
+algoSel.addEventListener("change", ()=>{ settings.algo = algoSel.value; saveSettings(); updateAlgoInfo(); });
+// undo/redo behaviour: how many steps are remembered (shown in the right column under "Verlauf")
+const setHistoryMax = document.getElementById("setHistoryMax");
+setHistoryMax.addEventListener("change", ()=>{
+  let n = Math.round(+setHistoryMax.value || 0); n = Math.max(1, Math.min(999, n));
+  setHistoryMax.value = n; settings.historyMax = n; saveSettings();
+  trimHistory(); recalc();   // recalc refreshes the Verlauf list if it is shown
 });
 function openSettings(){
   renderTruckTable();
   setCrosshair.checked = settings.showCrosshair;
   document.getElementById("langSel").value = settings.lang;
+  setHistoryMax.value = historyMax();
+  renderAlgoOptions();
   settingsModal.classList.add("open");
 }
 document.getElementById("btnSettings").addEventListener("click", openSettings);
@@ -259,9 +322,10 @@ function syncManualUI(){
 }
 function setManualMode(on){
   manualMode = on;
+  manualOnByLoad[activeLoadId] = on;   // hand mode is per load
   syncManualUI();
-  if(on){ seedManualFromAuto(); notify("ok", t('manualOn'), "", 3500); }
-  else  { manualPallets = null;  notify("ok", t('manualOff'), "", 2500); }
+  if(on){ seedManualFromAuto(); manualByLoad[activeLoadId] = manualPallets; notify("ok", t('manualOn'), "", 3500); }
+  else  { manualPallets = null; delete manualByLoad[activeLoadId]; notify("ok", t('manualOff'), "", 2500); }
   recalc();
 }
 document.getElementById("btnManual").addEventListener("click", ()=> setManualMode(!manualMode));
@@ -270,7 +334,7 @@ document.getElementById("btnManual").addEventListener("click", ()=> setManualMod
 // another pallet (or the front wall). Eliminates every X gap; Y positions stay unchanged.
 function compactForward(){
   if(!manualMode || !manualPallets) return;
-  record();
+  record(t('hist_compact'));
   const placed = [];
   for(const p of [...manualPallets].sort((a,b)=> a.x-b.x || a.y-b.y)){
     let x = 0;
@@ -285,6 +349,7 @@ document.getElementById("btnCompact").addEventListener("click", compactForward);
 // drop a pallet: magnet-snap to nearby neighbour edges, then INSERT & SHOVE —
 // any pallet overlapping it (or pushed into another) slides backwards (+x) to make room.
 const SNAP_MM = 160;
+let snapYTol = 0;   // vertical (across-truck) overlap tolerance in mm; set from ~15 screen px during a drag
 function snapPallet(pal, arr){
   const list = arr || manualPallets;
   const W = TRUCKS[currentTruck].w;
@@ -295,14 +360,19 @@ function snapPallet(pal, arr){
   const near = (v, cands)=>{ let best=v, bd=SNAP_MM; for(const c of cands){ const d=Math.abs(c-v); if(d<bd){bd=d; best=c;} } return best; };
   pal.x = Math.max(0, near(pal.x, xe));
   pal.y = Math.max(0, Math.min(W-pal.h, near(pal.y, ye)));
-  const overlap = (a,b)=> a.x < b.x+b.w-0.5 && b.x < a.x+a.w-0.5 && a.y < b.y+b.h-0.5 && b.y < a.y+a.h-0.5;
+  // a graze of up to snapYTol (≈15 px) across the truck does NOT count as an overlap, so nudging a
+  // pallet slightly into the neighbouring lane keeps it in place instead of jumping it to the right.
+  const yt = Math.max(0.5, snapYTol);
+  const overlap = (a,b)=> a.x < b.x+b.w-0.5 && b.x < a.x+a.w-0.5 && a.y < b.y+b.h-yt && b.y < a.y+a.h-yt;
   const xOv = (a,b)=> Math.min(a.x+a.w, b.x+b.w) - Math.max(a.x, b.x);   // overlap depth along the truck
-  // gentle case: only a shallow overlap -> snap the dropped pallet BESIDE its neighbours (don't shove them).
-  // Only a deep overlap (> half the pallet's depth) counts as "insert between" -> shove.
+  const yOv = (a,b)=> Math.min(a.y+a.h, b.y+b.h) - Math.max(a.y, b.y);   // overlap across the truck
+  // gentle case: snap the dropped pallet BESIDE its neighbours (don't shove). Only a DEEP 2D overlap
+  // (>= half the pallet in BOTH axes) counts as a deliberate "insert between" -> shove. This stops a
+  // light vertical graze from skipping the lane-snap and shoving the overlapping pallet.
   const ov = others.filter(o=> overlap(pal,o));
   if(ov.length){
-    const pen = Math.max(...ov.map(o=> xOv(pal,o)));
-    if(pen < pal.w*0.5){
+    const deep = ov.some(o=> xOv(pal,o) >= pal.w*0.5 && yOv(pal,o) >= pal.h*0.5);
+    if(!deep){
       const back  = Math.max(...ov.map(o=> o.x+o.w));            // sit just behind them
       const front = Math.min(...ov.map(o=> o.x)) - pal.w;        // or just in front
       pal.x = Math.max(0, (front>=0 && Math.abs(front-pal.x) <= Math.abs(back-pal.x)) ? front : back);
@@ -351,6 +421,8 @@ truckSvgEl.addEventListener("pointerdown", e=>{
 truckSvgEl.addEventListener("pointermove", e=>{
   if(!drag) return;
   const loc = svgMM(e); if(!loc) return;
+  const ctm = truckSvgEl.getScreenCTM();          // px-per-mm -> 15 screen px as a mm tolerance
+  snapYTol = (ctm && ctm.a) ? 15/Math.abs(ctm.a) : 0;
   const truck = TRUCKS[currentTruck];
   const nx = Math.max(0, loc.x - drag.dx), ny = Math.max(0, Math.min(truck.w - drag.pal.h, loc.y - drag.dy));
   if(!drag.moved){
@@ -360,16 +432,22 @@ truckSvgEl.addEventListener("pointermove", e=>{
   }
   drag.pal.x = nx; drag.pal.y = ny;
   renderTruck(manualLayout());   // live preview (lightweight)
-  // show where it would snap to (dashed outline + front line), computed on a copy (no side effects)
+  // preview where it would snap to (computed on a copy, no side effects). Orange if it would
+  // shove other pallets, green if it just drops into place; also outline any displaced pallets.
   const clones = manualPallets.map(p=> ({...p}));
-  const cp = clones[manualPallets.indexOf(drag.pal)];
+  const idx = manualPallets.indexOf(drag.pal), cp = clones[idx];
+  const before = clones.map(c=>({x:c.x, y:c.y}));
   snapPallet(cp, clones);
+  const moved = clones.filter((c,i)=> i!==idx && (Math.abs(c.x-before[i].x)>0.5 || Math.abs(c.y-before[i].y)>0.5));
+  const col = moved.length ? "#f59e0b" : "#34d399";   // orange = displaces others, green = clean drop
+  const fill = moved.length ? "rgba(245,158,11,.14)" : "rgba(52,211,153,.12)";
   const g = document.getElementById("dropGuide");   // separate group -> not wiped by the hover handler
   if(g){
     const X = HOVER_PAD+cp.x, Y = HOVER_PAD+cp.y;
-    g.innerHTML =
-      `<rect x="${X+10}" y="${Y+10}" width="${cp.w-20}" height="${cp.h-20}" rx="18" fill="rgba(52,211,153,.12)" stroke="#34d399" stroke-width="22" stroke-dasharray="90 70"/>`+
-      `<line x1="${X}" y1="${Y-25}" x2="${X}" y2="${Y+cp.h+25}" stroke="#34d399" stroke-width="14"/>`;
+    let s = moved.map(c=> `<rect x="${HOVER_PAD+c.x+14}" y="${HOVER_PAD+c.y+14}" width="${c.w-28}" height="${c.h-28}" rx="14" fill="none" stroke="#f59e0b" stroke-width="12" stroke-dasharray="50 40" opacity=".7"/>`).join("");
+    s += `<rect x="${X+10}" y="${Y+10}" width="${cp.w-20}" height="${cp.h-20}" rx="18" fill="${fill}" stroke="${col}" stroke-width="22" stroke-dasharray="90 70"/>`+
+         `<line x1="${X}" y1="${Y-25}" x2="${X}" y2="${Y+cp.h+25}" stroke="${col}" stroke-width="14"/>`;
+    g.innerHTML = s;
   }
   e.preventDefault();
 });
@@ -378,7 +456,7 @@ truckSvgEl.addEventListener("pointerup", e=>{
   const { pal, moved, preState } = drag;
   try{ if(moved) truckSvgEl.releasePointerCapture(drag.pointerId); }catch(_){}
   drag = null;
-  if(moved){ pushUndo(preState); snapPallet(pal); recalc(); }   // a plain click (no move) leaves the DOM intact -> dblclick can fire
+  if(moved){ pushUndo({snap:preState, label:t('hist_move')}); snapPallet(pal); recalc(); }   // a plain click (no move) leaves the DOM intact -> dblclick can fire
 });
 // double-click a pallet -> rotate (swap length/width) if it still fits the width
 truckSvgEl.addEventListener("dblclick", e=>{
@@ -387,7 +465,7 @@ truckSvgEl.addEventListener("dblclick", e=>{
   const pal = manualPallets.find(p=>p.pid==g.dataset.pid); if(!pal) return;
   if(pal.h > TRUCKS[currentTruck].w && pal.w > TRUCKS[currentTruck].w) return;
   if(pal.w > TRUCKS[currentTruck].w) return;   // rotated (new height = old width) would exceed width
-  record();
+  record(t('hist_rotate'));
   const nw = pal.h, nh = pal.w; pal.w = nw; pal.h = nh;
   snapPallet(pal); recalc(); e.preventDefault();
 });
@@ -440,8 +518,8 @@ document.getElementById("btnTestcase").addEventListener("click", exportTestcase)
 /* ---------- calibration: generate a random load to stress-test the algorithm ---------- */
 function randomLoad(){
   if(manualMode) setManualMode(false);
-  record();
-  colorIdx = 0; orders = [];
+  record(t('hist_random'));
+  colorIdx = 0; orders = []; clearManualMaps();
   loads = [makeLoad({ truck: currentTruck })]; activeLoadId = loads[0].id;   // single fresh load
   const sizes = [[1200,800],[1200,1000],[1200,830],[1200,1200],[1300,900],[1400,1000]];   // never smaller than 1200x800
   const pickMode = ()=>{ const r = Math.random(); return r < 0.75 ? "optimized" : r < 0.90 ? "long" : "wide"; };   // 75% / 15% / 10%
@@ -467,7 +545,7 @@ document.getElementById("btnRandom").addEventListener("click", randomLoad);
 // toolbar
 // add a new order (used by the toolbar button and the footer button in the list)
 function addOrder(){
-  record();
+  record(t('hist_orderAdd'));
   const o = makeOrder({length:1200, width:800, height:1200, qty:1, sequence:1});
   orders.push(o);
   revealNewOrders();   // new (inactive) order -> un-hide inactive + clear the search so it is visible
@@ -491,17 +569,17 @@ document.getElementById("btnRedo").addEventListener("click", redo);
 
 // reflect the inline header controls' state (hide-inactive on/off + inactive count) without a full re-render
 function updateHeadCtl(){
-  const inact = orders.filter(o=>!onActive(o)).length;
   const filtering = !!filterText;
   const hb = document.querySelector('#listHead [data-listact="hideInactive"]');
   if(!hb) return;
   hb.classList.toggle("on", hideInactive);
   hb.classList.toggle("filtering", filtering);
   hb.title = filtering ? t('hideSearch') : (hideInactive ? t('hideShow') : t('hideHide'));
+  const hc = hiddenCount();   // hidden by search, else by hide-inactive
   let cnt = hb.querySelector(".cnt");
-  if(hideInactive && !filtering && inact>0){   // badge shows how many are currently hidden
+  if(hc>0){
     if(!cnt){ cnt = document.createElement("span"); cnt.className = "cnt"; hb.appendChild(cnt); }
-    cnt.textContent = inact;
+    cnt.textContent = hc;
   } else if(cnt){ cnt.remove(); }
 }
 
@@ -516,7 +594,7 @@ document.getElementById("btnNote").addEventListener("click", ()=>{
 });
 document.getElementById("noteCancel").addEventListener("click", ()=> noteModal.classList.remove("open"));
 document.getElementById("noteOk").addEventListener("click", ()=>{
-  if(noteArea.value !== loadNote) record();
+  if(noteArea.value !== loadNote) record(t('hist_note'));
   loadNote = noteArea.value; activeLoad().note = loadNote; updateNoteBtn(); noteModal.classList.remove("open");
 });
 noteModal.addEventListener("click", e=>{ if(e.target===noteModal) noteModal.classList.remove("open"); });
@@ -526,6 +604,16 @@ const splitModal = document.getElementById("splitModal");
 let splitPending = null;   // { oid, nFit, cap }
 function closeSplit(){ splitModal.classList.remove("open"); splitPending = null; }
 function applyFit(o, n){ const al = activeLoad(); if(n>0) al.assign[o.id] = n; else delete al.assign[o.id]; }
+// open the "too many pallets" dialog for order o: keep nFit on the active load, redistribute (cap-nFit).
+// mode "fill" = adding more (»), mode "overflow" = an existing load got too long (e.g. via load type).
+function openSplitFor(o, nFit, cap, mode){
+  splitPending = { oid:o.id, nFit, cap, mode:mode||"fill" };
+  const sel = document.getElementById("splitTruck");
+  sel.innerHTML = Object.keys(TRUCKS).map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join("");
+  sel.value = activeLoad().truck;   // preselect the active tab's truck type
+  updateSplitDialog();
+  splitModal.classList.add("open");
+}
 // (re)compute the dialog texts for the currently selected truck type
 function updateSplitDialog(){
   if(!splitPending) return;
@@ -534,9 +622,32 @@ function updateSplitDialog(){
   const need = loadsNeeded(o, splitPending.cap - splitPending.nFit, truckName);
   splitPending.truckName = truckName; splitPending.need = need;
   document.getElementById("splitCreatePre").textContent = t('splitCreatePre', need.loads);
-  document.getElementById("splitFillOnly").textContent = t('splitFillBtn', splitPending.nFit, splitPending.cap);
+  const fillKey = splitPending.mode==="overflow" ? 'splitKeepBtn' : 'splitFillBtn';
+  document.getElementById("splitFillOnly").textContent = t(fillKey, splitPending.nFit, splitPending.cap);
   document.getElementById("splitCreate").classList.toggle("disabled", need.loads<=0);
 }
+// an existing (active) load overflows -> redistribute the surplus of its worst-overflowing order
+function resolveActiveOverflow(){
+  const al = activeLoad();
+  const truck = TRUCKS[al.truck] || TRUCKS[currentTruck]; if(!truck) return;
+  const layout = computeLayout(loadOrders(al), truck);
+  if(layout.fits) return;   // nothing overflows anymore
+  const overBy = {};
+  for(const p of layout.placements) if(p.overflow) overBy[p.order.id] = (overBy[p.order.id]||0) + (p.stack||1);
+  let oid=null, mx=-1; for(const k in overBy) if(overBy[k]>mx){ mx=overBy[k]; oid=+k; }
+  const o = orders.find(x=>x.id===oid); if(!o) return;
+  const cur = al.assign[o.id]|0;
+  const keep = Math.min(maxFitOnActive(o), cur);   // how many of o may stay so the load fits
+  openSplitFor(o, keep, cur, "overflow");
+}
+document.addEventListener("click", e=>{ if(e.target.closest("#resolveOverflow")) resolveActiveOverflow(); });
+// right panel toggle (Ladeinfo <-> Verlauf, persisted) + click-to-jump in the Verlauf list
+document.getElementById("infoPanel").addEventListener("click", e=>{
+  const tg = e.target.closest("[data-rv]");
+  if(tg){ if(settings.rightView!==tg.dataset.rv){ settings.rightView = tg.dataset.rv; saveSettings(); recalc(); } return; }
+  const hi = e.target.closest("[data-hk]");
+  if(hi) jumpHistory(hi.dataset.hk, +hi.dataset.hs || 1);
+});
 const splitTruckSel = document.getElementById("splitTruck");
 splitTruckSel.addEventListener("change", updateSplitDialog);
 splitTruckSel.addEventListener("click", e=> e.stopPropagation());   // choosing the type must not trigger "create"
@@ -546,7 +657,7 @@ splitModal.addEventListener("click", e=>{ if(e.target===splitModal) closeSplit()
 document.getElementById("splitFillOnly").addEventListener("click", ()=>{
   if(!splitPending) return;
   const o = orders.find(x=>x.id===splitPending.oid); if(!o){ closeSplit(); return; }
-  record(); applyFit(o, splitPending.nFit);
+  record(t('hist_split')); applyFit(o, splitPending.nFit);
   closeSplit(); if(manualMode) seedManualFromAuto(); recalc();
 });
 document.getElementById("splitCreate").addEventListener("click", ()=>{
@@ -554,19 +665,45 @@ document.getElementById("splitCreate").addEventListener("click", ()=>{
   if(document.getElementById("splitCreate").classList.contains("disabled")) return;
   const o = orders.find(x=>x.id===splitPending.oid); if(!o){ closeSplit(); return; }
   const tn = splitPending.truckName || activeLoad().truck;
-  record();
+  record(t('hist_split'));
   applyFit(o, splitPending.nFit);
-  let remaining = splitPending.cap - splitPending.nFit, created = 0, guard = 0;
+  let remaining = splitPending.cap - splitPending.nFit, created = 0, guard = 0, firstNew = null;
   while(remaining>0 && guard++ < 99){
     const nl = makeLoad({ truck: tn }); loads.push(nl);
     const n = fitCount(nl, o, remaining);
     if(n<=0){ loads = loads.filter(l=>l.id!==nl.id); break; }   // pallet too big even for an empty truck
     nl.assign[o.id] = n; remaining -= n; created++;
+    if(!firstNew) firstNew = nl;
   }
   closeSplit();
-  if(manualMode) seedManualFromAuto();
+  // jump focus to the freshly created load (keep manual layout per load)
+  if(firstNew){ stashManual(); activeLoadId = firstNew.id; syncActiveLoadMirror(); restoreManual(); }
+  else if(manualMode) seedManualFromAuto();
   renderAll();
   notify("ok", t('splitDone', created) + (remaining>0 ? " "+t('splitRest', remaining) : ""), "", 4500);
+});
+
+// auto-create loads dialog
+const autoModal = document.getElementById("autoModal");
+function closeAuto(){ autoModal.classList.remove("open"); }
+document.getElementById("btnAuto").addEventListener("click", ()=> autoModal.classList.add("open"));
+document.getElementById("autoClose").addEventListener("click", closeAuto);
+autoModal.addEventListener("click", e=>{ if(e.target===autoModal) closeAuto(); });
+document.getElementById("autoStart").addEventListener("click", ()=>{
+  if(!orders.some(o=> openQty(o)>0)){ notify("warn", t('autoNothing')); closeAuto(); return; }
+  const opts = {
+    sameDate:     document.getElementById("autoSameDate").checked,
+    groupDest:    document.getElementById("autoGroupDest").checked,
+    adjacentOnly: document.getElementById("autoAdjacentOnly").checked,
+    sameCustomer: document.getElementById("autoSameCustomer").checked,
+    fillExisting: document.getElementById("autoFillExisting").checked,
+  };
+  record(t('hist_auto'));
+  const r = autoCreateLoads(opts);
+  if(manualMode) seedManualFromAuto();
+  closeAuto();
+  renderAll();
+  notify("ok", t('autoDone', r.created, r.leftover), "", 5000);
 });
 
 // export as JSON
@@ -592,7 +729,8 @@ function doExport(name){
     activeLoad: Math.max(0, loads.findIndex(l=>l.id===activeLoadId)),
     trucks: usedTrucks,
     loads: loads.map(l=>({ name:l.name, truck:l.truck, note:l.note,
-      assign: pool.map(o=> l.assign[o.id]|0) })),   // pallet counts aligned to the orders index
+      assign: pool.map(o=> l.assign[o.id]|0),        // pallet counts aligned to the orders index
+      modeOf: pool.map(o=> (l.modeOf && l.modeOf[o.id]) || "") })),   // per-load load type ("" = use order default)
     orders: pool.map(o=>({ orderNo:o.orderNo, customer:o.customer, deliveryDate:o.deliveryDate,
       destCode:o.destCode, qty:o.qty, length:o.length, width:o.width, height:o.height,
       loadMode:o.loadMode, sequence:o.sequence, stackable:o.stackable, remark:o.remark, color:o.color })),
@@ -719,9 +857,10 @@ function buildLoadPage(load){
     `</section>`;
 }
 // print: ALL loads, one A4 sheet per load (loads with at least one pallet; else the active load)
-function buildPrintView(){
-  const withPal = loads.filter(l => orders.some(o => (l.assign[o.id]|0) > 0));
-  const list = withPal.length ? withPal : [activeLoad()];
+function buildPrintView(ids){
+  let list = loads.filter(l => orders.some(o => (l.assign[o.id]|0) > 0));
+  if(ids && ids.length) list = list.filter(l => ids.includes(l.id));
+  if(!list.length) list = [activeLoad()];
   return list.map(buildLoadPage).join("");
 }
 // print the load: render the HTML in a separate about:blank window so the PDF footer has no file path.
@@ -747,7 +886,27 @@ function printDoc(bodyHtml, title){
   doc.open(); doc.write(html); doc.close();
   setTimeout(()=>{ try{ ifr.contentWindow.focus(); ifr.contentWindow.print(); }catch(_){} setTimeout(()=> ifr.remove(), 1500); }, 150);
 }
-document.getElementById("btnPrint").addEventListener("click", ()=>{ printDoc(buildPrintView(), t('printTitle')); });
+// print dialog: pick which loads to print
+const printModal = document.getElementById("printModal");
+function openPrintDialog(){
+  const withPal = loads.filter(l => orders.some(o => (l.assign[o.id]|0) > 0));
+  const list = withPal.length ? withPal : [activeLoad()];
+  document.getElementById("printList").innerHTML = list.map(l=>{
+    const cnt = orders.reduce((s,o)=> s + (l.assign[o.id]|0), 0);
+    return `<label class="chk"><input type="checkbox" class="printpick" value="${l.id}" checked> `+
+      `<span>${esc(loadLabel(l))} <span class="muted">(${cnt} Pal · ${esc(l.truck)})</span></span></label>`;
+  }).join("");
+  printModal.classList.add("open");
+}
+document.getElementById("btnPrint").addEventListener("click", openPrintDialog);
+document.getElementById("printClose").addEventListener("click", ()=> printModal.classList.remove("open"));
+printModal.addEventListener("click", e=>{ if(e.target===printModal) printModal.classList.remove("open"); });
+document.getElementById("printGo").addEventListener("click", ()=>{
+  const ids = [...printModal.querySelectorAll(".printpick:checked")].map(c=>+c.value);
+  if(!ids.length) return;
+  printModal.classList.remove("open");
+  printDoc(buildPrintView(ids), t('printTitle'));
+});
 
 // import from JSON
 const fileImport = document.getElementById("fileImport");
@@ -760,12 +919,12 @@ fileImport.addEventListener("change", e=>{
       const data = JSON.parse(reader.result);
       const list = Array.isArray(data) ? data : data.orders;
       if(!Array.isArray(list)) throw new Error("No orders array found.");
-      record();
+      record(t('hist_paste'));
       orders = list.map(d => makeOrder({
         orderNo:d.orderNo||"", customer:d.customer||"", deliveryDate:d.deliveryDate||"",
         destCode:d.destCode||"", qty:+d.qty||1,
         length:+d.length||1200, width:+d.width||800, height:+d.height||1200,
-        loadMode:["optimized","long","wide"].includes(d.loadMode)?d.loadMode:"optimized",
+        loadMode:["optimized","long","wide","longwide"].includes(d.loadMode)?d.loadMode:"optimized",
         sequence:Math.max(1,Math.min(99,+d.sequence||1)),
         stackable:!!d.stackable, active:!!d.active, remark:d.remark||"",
         ...(d.color ? {color:d.color} : {}),
@@ -778,15 +937,17 @@ fileImport.addEventListener("change", e=>{
         }
         if(added){ saveTrucks(); rebuildTruckSelect(); }
       }
-      // rebuild the loads
-      loadSeq = 1;
+      // rebuild the loads (load ids restart at 1 -> drop any stale per-load hand state)
+      loadSeq = 1; clearManualMaps();
       if(Array.isArray(data.loads)){
         // multi-load format: assign arrays aligned to the orders index
         loads = data.loads.map(L=>{
           const tn = (L && L.truck && TRUCKS[L.truck]) ? L.truck : currentTruck;
           const load = makeLoad({ name:(L&&L.name)||"", truck:tn, note:(L&&L.note)||"" });
           const arr = (L && Array.isArray(L.assign)) ? L.assign : [];
-          orders.forEach((o,i)=>{ const n = arr[i]|0; if(n>0) load.assign[o.id] = Math.min(n, o.qty|0); });
+          const modes = (L && Array.isArray(L.modeOf)) ? L.modeOf : [];
+          orders.forEach((o,i)=>{ const n = arr[i]|0; if(n>0) load.assign[o.id] = Math.min(n, o.qty|0);
+            if(["optimized","long","wide","longwide"].includes(modes[i])) load.modeOf[o.id] = modes[i]; });
           return load;
         });
         if(!loads.length) loads = [makeLoad()];
@@ -821,6 +982,7 @@ fileImport.addEventListener("change", e=>{
           const o = orders[p.oi] || orders[0];
           return { pid:i+1, order:o, color:(o&&o.color)||"#888", w:p.w, h:p.h, x:p.x, y:p.y, stack:p.stack||1 };
         });
+        manualOnByLoad[activeLoadId] = true; manualByLoad[activeLoadId] = manualPallets;   // record per-load hand state
         recalc();
         notify("ok", t('analysisLoaded'), `Hand ${data.hand.usedLength_m}m · Algo ${data.algo?data.algo.usedLength_m:"?"}m`, 5000);
       } else {
@@ -852,8 +1014,8 @@ btnReset.addEventListener("click", ()=>{
     return;
   }
   disarmReset();
-  record();
-  orders = []; colorIdx = 0;
+  record(t('hist_reset'));
+  orders = []; colorIdx = 0; clearManualMaps();
   loads = [makeLoad({ truck: currentTruck })]; activeLoadId = loads[0].id;   // back to one empty load
   hideInactive = false; resetSearch();   // "clear all" also clears the search filter
   manualMode = false; manualPallets = null; syncManualUI();
@@ -869,7 +1031,7 @@ list.addEventListener("input", e=>{
   const card = e.target.closest(".order"); if(!card) return;
   const o = orders.find(x=>x.id==card.dataset.id); if(!o) return;
   const f = e.target.dataset.f; if(!f) return;
-  if(!editRecorded){ record(); editRecorded = true; }   // one undo step per edit
+  if(!editRecorded){ record(t('hist_field')); editRecorded = true; }   // one undo step per edit
   if(e.target.classList.contains("num") || f==="sequence"){
     handleNumInput(e.target, o, f);
   } else {
@@ -884,8 +1046,8 @@ list.addEventListener("change", e=>{
   const card = e.target.closest(".order"); if(!card) return;
   const o = orders.find(x=>x.id==card.dataset.id); if(!o) return;
   const f = e.target.dataset.f;
-  if(f==="stackable"){ record(); o.stackable = e.target.checked; }
-  else if(f==="loadMode"){ record(); o.loadMode = e.target.value; renderList(); }
+  if(f==="stackable"){ record(t('hist_stack')); o.stackable = e.target.checked; }
+  else if(f==="loadMode"){ record(t('hist_mode')); const al = activeLoad(); (al.modeOf || (al.modeOf={}))[o.id] = e.target.value; renderList(); }
   else return;
   // structural change (stacking/load mode changes the pallet set) -> rebuild the hand layout
   if(manualMode) seedManualFromAuto();
@@ -895,34 +1057,29 @@ list.addEventListener("click", e=>{
   const btn = e.target.closest("button[data-act]"); if(!btn) return;
   const card = e.target.closest(".order"); const o = orders.find(x=>x.id==card.dataset.id); if(!o) return;
   const act = btn.dataset.act;
-  if(act==="del"){ record(); orders = orders.filter(x=>x.id!==o.id); renderAll(); }
-  else if(act==="inc"){ record(); o.sequence = Math.min(99,(+o.sequence||0)+1); renderList(); recalc(); }
-  else if(act==="dec"){ record(); o.sequence = Math.max(1,(+o.sequence||1)-1); renderList(); recalc(); }
+  if(act==="del"){ record(t('hist_orderDel')); orders = orders.filter(x=>x.id!==o.id); renderAll(); }
+  else if(act==="inc"){ record(t('hist_seq')); o.sequence = Math.min(99,(+o.sequence||0)+1); renderList(); recalc(); }
+  else if(act==="dec"){ record(t('hist_seq')); o.sequence = Math.max(1,(+o.sequence||1)-1); renderList(); recalc(); }
   else if(act==="fillFit"){
     // load as many of this order's pallets as still fit on the active load's truck
     const al = activeLoad(), nFit = maxFitOnActive(o), cap = assignCap(o), cur = al.assign[o.id]|0;
     if(nFit >= cap){
       // Case A: everything that may go on this load fits -> just load it
       if(nFit === cur){ notify("warn", t('fillNone')); return; }
-      record();
+      record(t('hist_fill'));
       if(cap>0) al.assign[o.id] = cap; else delete al.assign[o.id];
       if(manualMode) seedManualFromAuto();
       recalc();
     } else {
       // Case B: load too large -> ask whether to create more loads (truck type selectable)
-      splitPending = { oid:o.id, nFit, cap };
-      const sel = document.getElementById("splitTruck");
-      sel.innerHTML = Object.keys(TRUCKS).map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join("");
-      sel.value = al.truck;   // preselect the active tab's truck type
-      updateSplitDialog();
-      splitModal.classList.add("open");
+      openSplitFor(o, nFit, cap, "fill");
     }
   }
   else if(act==="clearAssign"){
     // remove this order entirely from the active load
     const al = activeLoad();
     if(!(al.assign[o.id]|0)) return;   // already not on this load
-    record();
+    record(t('hist_clear'));
     delete al.assign[o.id];
     if(manualMode) seedManualFromAuto();
     recalc();
@@ -956,9 +1113,14 @@ list.addEventListener("focusin", e=>{
   if(card && e.target.tagName==="INPUT" && e.target.type!=="checkbox"){ editRecorded = false; e.target.select(); }
   if(card) triggerFlash(card.dataset.id);
 });
-// click anywhere in the row (except buttons/header) -> flash pallets
+// click a "Ladung X: n" badge -> jump to that load
 list.addEventListener("click", e=>{
-  if(e.target.closest("button[data-act]") || e.target.closest("[data-sort]")) return;
+  const j = e.target.closest("[data-loadjump]"); if(!j) return;
+  e.stopPropagation(); switchLoad(+j.dataset.loadjump);
+});
+// click anywhere in the row (except buttons/header/load-jump) -> flash pallets
+list.addEventListener("click", e=>{
+  if(e.target.closest("button[data-act]") || e.target.closest("[data-sort]") || e.target.closest("[data-loadjump]")) return;
   const card = e.target.closest(".order"); if(card) triggerFlash(card.dataset.id);
 });
 // click the copy icon -> copy the order number to the clipboard
@@ -1036,7 +1198,7 @@ function importText(txt){
   if(toAdd.length){
     const truck = TRUCKS[currentTruck];
     toAdd.forEach(o=>{ o.stackable = (2*o.height <= truck.h); }); // default stackable
-    record();
+    record(t('hist_paste'));
     orders.push(...toAdd);
     revealNewOrders();   // newly pasted orders -> un-hide inactive + clear the search
     renderAll();
@@ -1079,16 +1241,46 @@ document.addEventListener("keydown", e=>{
   else if(k==="y" || (k==="z" && e.shiftKey)){ e.preventDefault(); redo(); }
 });
 
+// "set all load type" dropdown in the Ladeart column header
+list.addEventListener("change", e=>{
+  const sm = e.target.closest(".setallmode"); if(!sm) return;
+  const v = sm.value; sm.value = "";
+  if(!v || !orders.length) return;
+  record(t('hist_modeAll')); const al = activeLoad(); al.modeOf = al.modeOf || {};
+  orders.forEach(o=> al.modeOf[o.id] = v);   // set the load type of every order ON the active load
+  if(manualMode) seedManualFromAuto();
+  renderList(); recalc();
+});
+// long-press (3 s) on "all inactive" -> clear EVERY load; a fill animation shows the progress
+let aiTimer = null, aiFired = false;
+list.addEventListener("pointerdown", e=>{
+  const b = e.target.closest('[data-listact="allInactive"]'); if(!b) return;
+  aiFired = false; b.classList.add("pressing");
+  aiTimer = setTimeout(()=>{
+    aiTimer = null; aiFired = true; b.classList.remove("pressing");
+    if(loads.some(l=>Object.keys(l.assign).length)){
+      record(t('hist_clearAll')); loads.forEach(l=> l.assign = {});
+      if(manualMode) seedManualFromAuto();
+      renderAll(); notify("ok", t('allLoadsCleared'), "", 2500);
+    }
+  }, 1500);
+});
+function aiCancel(){ if(aiTimer){ clearTimeout(aiTimer); aiTimer=null; }
+  const b = document.querySelector('[data-listact="allInactive"].pressing'); if(b) b.classList.remove("pressing"); }
+list.addEventListener("pointerup", aiCancel);
+list.addEventListener("pointerleave", aiCancel);
+list.addEventListener("pointercancel", aiCancel);
 // list-level controls outside the order rows: header icons + footer buttons (event delegation)
 list.addEventListener("click", e=>{
   const b = e.target.closest("[data-listact]"); if(!b) return;
   switch(b.dataset.listact){
     case "allInactive":
+      if(aiFired){ aiFired = false; return; }   // long-press already cleared all loads
       if(!orders.some(o=>onActive(o))) return;
-      record(); activeLoad().assign = {}; renderAll(); break;
+      record(t('hist_clearActive')); activeLoad().assign = {}; renderAll(); break;
     case "hideInactive":
-      hideInactive = !hideInactive;
-      if(!hideInactive) resetSearch();   // "show inactive again" also clears the search filter
+      if(filterText){ resetSearch(); }            // search active -> ONE press clears it (no double toggle)
+      else { hideInactive = !hideInactive; }
       renderAll(); break;
     case "add":   addOrder(); break;
     case "paste": openPaste(); break;

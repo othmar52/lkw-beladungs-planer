@@ -21,8 +21,11 @@ let loads = [];
 let activeLoadId = null;
 let loadSeq = 1;
 function makeLoad(data={}){
-  return Object.assign({ id: loadSeq++, name:"", truck: currentTruck, note:"", assign:{} }, data);
+  return Object.assign({ id: loadSeq++, name:"", truck: currentTruck, note:"", assign:{}, modeOf:{} }, data);
 }
+// effective load type of order o ON a given load: a per-load override wins, else DEFAULT = "optimized".
+// (Each load defaults to "optimized" independently — even the same order split across loads.)
+function loadModeFor(load, o){ return (load && load.modeOf && load.modeOf[o.id]) || "optimized"; }
 function activeLoad(){ return loads.find(l=>l.id===activeLoadId) || loads[0]; }
 function ensureLoads(){ if(!loads.length){ loads = [makeLoad()]; activeLoadId = loads[0].id; } }
 ensureLoads();
@@ -36,7 +39,7 @@ const assignCap = o => Math.max(0, (o.qty|0) - otherLoadsQty(o));
 // virtual orders for one load (clone of the pool order, qty = assigned on that load, active)
 function loadOrders(load){
   const out = [];
-  for(const o of orders){ const n = load.assign[o.id]|0; if(n>0) out.push(Object.assign({}, o, {qty:n, active:true})); }
+  for(const o of orders){ const n = load.assign[o.id]|0; if(n>0) out.push(Object.assign({}, o, {qty:n, active:true, loadMode:loadModeFor(load,o)})); }
   return out;
 }
 // layout of the active load with its own truck (computeLayout stays parametrised → tests unaffected)
@@ -89,6 +92,85 @@ function loadsNeeded(o, remaining, truckName){
   }
   return { loads:n, leftover:rem };
 }
+/* ============================ Auto loads (NUTS-2 distance grouping) ============================ */
+// NUTS-2 region centroids [lat,lon] for AT + neighbours (approx; enough for "nearest dest" grouping)
+const NUTS2 = {
+  AT11:[47.55,16.40],AT12:[48.30,15.75],AT13:[48.21,16.37],AT21:[46.72,13.85],AT22:[47.20,15.10],
+  AT31:[48.15,13.90],AT32:[47.45,13.20],AT33:[47.15,11.30],AT34:[47.25,9.90],
+  DE11:[48.70,9.30],DE12:[49.00,8.40],DE13:[47.90,8.00],DE14:[48.20,9.40],DE21:[47.95,11.80],DE22:[48.70,12.90],
+  DE23:[49.35,12.10],DE24:[50.05,11.30],DE25:[49.30,10.80],DE26:[49.95,9.95],DE27:[48.20,10.40],DE30:[52.52,13.40],
+  DE40:[52.40,13.00],DE50:[53.10,8.80],DE60:[53.55,10.00],DE71:[49.90,8.70],DE72:[50.60,8.70],DE73:[51.10,9.50],
+  DE80:[53.60,12.70],DE91:[52.20,10.50],DE92:[52.40,9.70],DE93:[53.10,10.40],DE94:[52.80,8.00],DEA1:[51.20,6.80],
+  DEA2:[50.90,6.90],DEA3:[51.95,7.60],DEA4:[51.90,8.80],DEA5:[51.40,8.00],DEB1:[50.35,7.60],DEB2:[49.80,6.70],
+  DEB3:[49.50,8.10],DEC0:[49.40,7.00],DED2:[51.05,13.70],DED4:[50.75,12.90],DED5:[51.30,12.40],DEE0:[51.95,11.60],
+  DEF0:[54.20,9.70],DEG0:[50.90,11.00],
+  CZ01:[50.08,14.44],CZ02:[49.95,14.60],CZ03:[49.20,13.90],CZ04:[50.45,13.40],CZ05:[50.35,15.80],CZ06:[49.10,16.60],
+  CZ07:[49.60,17.25],CZ08:[49.80,18.25],
+  SK01:[48.15,17.10],SK02:[48.40,18.00],SK03:[48.80,19.40],SK04:[48.90,21.40],
+  HU11:[47.50,19.05],HU12:[47.50,19.30],HU21:[47.10,18.20],HU22:[47.20,16.90],HU23:[46.20,18.10],
+  HU31:[48.10,20.30],HU32:[47.50,21.60],HU33:[46.50,20.30],
+  SI03:[46.40,15.30],SI04:[46.05,14.40],
+  CH01:[46.40,6.60],CH02:[47.00,7.50],CH03:[47.50,7.80],CH04:[47.40,8.60],CH05:[47.40,9.30],CH06:[47.00,8.40],CH07:[46.30,8.90],
+  ITC1:[45.05,7.90],ITC2:[45.74,7.40],ITC3:[44.40,8.80],ITC4:[45.55,9.70],ITH1:[46.70,11.40],ITH2:[46.10,11.10],
+  ITH3:[45.55,11.90],ITH4:[46.10,13.10],ITH5:[44.60,11.00],ITI1:[43.40,11.10],ITI4:[41.90,12.70],
+  PL21:[49.90,20.00],PL22:[50.25,18.90],PL51:[51.00,16.80],PL52:[50.65,17.90],PL61:[53.00,18.50],PL71:[51.60,19.40],PL9:[52.20,21.00],
+};
+// rough distance (km) between two NUTS-2 dest codes; fallback when a code is unknown
+function destDist(a, b){
+  if(!a || !b) return 9999;
+  if(a===b) return 0;
+  const A = NUTS2[a], B = NUTS2[b];
+  if(A && B){
+    const R=6371, d2r=Math.PI/180;
+    const dLat=(B[0]-A[0])*d2r, dLon=(B[1]-A[1])*d2r;
+    const h=Math.sin(dLat/2)**2 + Math.cos(A[0]*d2r)*Math.cos(B[0]*d2r)*Math.sin(dLon/2)**2;
+    return 2*R*Math.asin(Math.sqrt(h));
+  }
+  if(a.slice(0,2)===b.slice(0,2)) return 80 + Math.abs((parseInt(a.slice(2))||0)-(parseInt(b.slice(2))||0))*15;
+  return 9999;
+}
+// auto-distribute all OPEN pallets into loads. opts: {sameDate, groupDest, fillExisting}
+function autoCreateLoads(opts){
+  const tn = activeLoad().truck;
+  const open = {}; orders.forEach(o=>{ const q=openQty(o); if(q>0) open[o.id]=q; });
+  const hasOpen = ()=> Object.values(open).some(v=>v>0);
+  const put = (L,o,k)=>{ if(k>0){ L.assign[o.id]=(L.assign[o.id]|0)+k; open[o.id]-=k; } };
+  const ADJ_KM = 200;   // "adjacent" destinations = NUTS-2 centroids within this distance
+  const loadDate = L=>{ for(const o of orders) if((L.assign[o.id]|0)>0 && o.deliveryDate) return o.deliveryDate; return null; };
+  const loadCustomer = L=>{ for(const o of orders) if((L.assign[o.id]|0)>0 && o.customer) return o.customer; return null; };
+  const loadDests = L=>{ const s=[]; for(const o of orders) if((L.assign[o.id]|0)>0 && o.destCode) s.push(o.destCode); return s; };
+  const compatible = (L,o)=>{
+    if(opts.sameDate){ const d=loadDate(L); if(d && o.deliveryDate && o.deliveryDate!==d) return false; }
+    if(opts.sameCustomer){ const c=loadCustomer(L); if(c && o.customer && o.customer!==c) return false; }
+    if(opts.adjacentOnly){ const ds=loadDests(L);
+      if(ds.length && o.destCode && !ds.includes(o.destCode)){
+        let m=Infinity; for(const d of ds) m=Math.min(m, destDist(o.destCode,d));
+        if(m>ADJ_KM) return false;
+      } }
+    return true;
+  };
+  const pickFor = L=>{
+    const cands = orders.filter(o=> open[o.id]>0 && compatible(L,o) && fitCount(L,o,open[o.id])>0);
+    if(!cands.length) return null;
+    if(opts.groupDest){
+      const dests = loadDests(L);
+      const score = o=>{ if(!dests.length) return 0; if(dests.includes(o.destCode)) return 0;
+        let m=Infinity; for(const d of dests) m=Math.min(m, destDist(o.destCode,d)); return m; };
+      cands.sort((a,b)=> score(a)-score(b) || open[b.id]-open[a.id]);
+    } else cands.sort((a,b)=> open[b.id]-open[a.id]);
+    return cands[0];
+  };
+  const fillLoad = L=>{ let g=0; while(g++<999){ const o=pickFor(L); if(!o) break; const k=fitCount(L,o,open[o.id]); if(k<=0) break; put(L,o,k); } };
+  if(opts.fillExisting) for(const L of loads.slice()) fillLoad(L);
+  let created=0, g=0;
+  while(hasOpen() && g++<999){
+    const L = makeLoad({ truck:tn });
+    fillLoad(L);
+    if(!Object.keys(L.assign).length) break;   // nothing fits (oversize remainder) -> stop
+    loads.push(L); created++;
+  }
+  return { created, leftover: Object.values(open).reduce((s,v)=>s+Math.max(0,v),0) };
+}
 // pull the active load's fields into the mirror globals + sync the inputs that show them
 function syncActiveLoadMirror(){
   const l = activeLoad(); if(!l) return;
@@ -113,7 +195,8 @@ function makeOrder(data={}){
 /* ============================ Undo / redo history ============================ */
 let undoStack = [];
 let redoStack = [];
-const HISTORY_MAX = 200;
+// max remembered undo steps — configurable in the global settings dialog (settings.historyMax)
+function historyMax(){ const n = settings && +settings.historyMax; return (n>=1 && n<=999) ? n : 200; }
 // full app state — extend here when new persistent state is added (keeps undo/redo complete)
 function captureState(){
   return JSON.stringify({
@@ -140,30 +223,48 @@ function applyState(s){
       : null;
   }
 }
+// history entries are { snap, label }. label = name of the action that this snapshot precedes.
 // push a pre-change snapshot onto the undo stack (clears the redo chain)
-function pushUndo(snap){
-  undoStack.push(snap);
-  if(undoStack.length > HISTORY_MAX) undoStack.shift();
+function pushUndo(entry){
+  undoStack.push(typeof entry==="string" ? {snap:entry, label:""} : entry);
+  while(undoStack.length > historyMax()) undoStack.shift();
   redoStack = [];
   updateUndoBtn();
 }
-// call before each change: saves the current state
-function record(){ pushUndo(captureState()); }
+// trim the stacks when the limit was lowered in the settings
+function trimHistory(){ while(undoStack.length > historyMax()) undoStack.shift(); while(redoStack.length > historyMax()) redoStack.shift(); updateUndoBtn(); }
+// call before each change: saves the current state + a human label of the action
+function record(label){ pushUndo({ snap: captureState(), label: label || (typeof t==="function" ? t('hist_change') : "") }); }
 function undo(){
   if(!undoStack.length) return;
-  redoStack.push(captureState());
-  applyState(undoStack.pop());
+  const e = undoStack.pop();
+  redoStack.push({ snap: captureState(), label: e.label });   // redo re-applies the same action
+  applyState(e.snap);
   afterHistoryRestore();
 }
 function redo(){
   if(!redoStack.length) return;
-  undoStack.push(captureState());
-  applyState(redoStack.pop());
+  const e = redoStack.pop();
+  undoStack.push({ snap: captureState(), label: e.label });
+  applyState(e.snap);
   afterHistoryRestore();
+}
+// jump several steps at once (clicked in the Verlauf view)
+function jumpHistory(kind, steps){
+  for(let i=0;i<steps;i++){ if(kind==="undo") undo(); else redo(); }
+}
+// the COMPLETE undo/redo history for the Verlauf view (scrollable). u[0]=most recent undo (1 step),
+// r[0]=next redo (1 step). The view itself scrolls, so we list everything that is still in the stacks.
+function historyView(){
+  const u = [], r = [];
+  for(let i=undoStack.length-1; i>=0; i--) u.push({ label: undoStack[i].label, steps: undoStack.length - i });
+  for(let j=redoStack.length-1; j>=0; j--) r.push({ label: redoStack[j].label, steps: redoStack.length - j });
+  return { u, r };
 }
 // re-sync all UI that lives outside the list/graphic after an undo/redo
 function afterHistoryRestore(){
   syncActiveLoadMirror();   // pull active load -> mirror globals + truck/name/note inputs
+  if(typeof syncActiveManualState==="function") syncActiveManualState();   // keep per-load hand state in sync
   if(typeof syncManualUI==="function") syncManualUI();
   if(typeof syncSearchInput==="function") syncSearchInput();
   if(typeof renderTabs==="function") renderTabs();

@@ -59,6 +59,9 @@
     <button id="btnTestcase" class="icon" title="Als Testfall exportieren" data-i18n-title="titleTestcase">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
     </button>
+    <button id="btnAuto" class="icon" title="Ladungen automatisch erstellen" data-i18n-title="titleAuto">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 17.5h7M17.5 14l3.5 3.5-3.5 3.5"/></svg>
+    </button>
     <button id="btnSettings" class="icon" title="Einstellungen (LKW-Typen, Anzeige)" data-i18n-title="titleSettings">
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
     </button>
@@ -137,6 +140,33 @@
   </div>
 </div>
 
+<div id="printModal">
+  <div class="modalbox">
+    <button id="printClose" class="modalx" title="Schließen" data-i18n-title="btnClose">×</button>
+    <h3 data-i18n="printSelTitle">Welche Ladungen drucken?</h3>
+    <div id="printList"></div>
+    <div class="modalbtns">
+      <button id="printGo" class="primary" data-i18n="printSelGo">Drucken</button>
+    </div>
+  </div>
+</div>
+
+<div id="autoModal">
+  <div class="modalbox">
+    <button id="autoClose" class="modalx" title="Schließen" data-i18n-title="btnClose">×</button>
+    <h3 data-i18n="autoTitle">Ladungen automatisch erstellen</h3>
+    <p data-i18n="autoDesc">Verteilt alle offenen Paletten aus dem Pool auf möglichst wenige Ladungen.</p>
+    <label class="chk"><input type="checkbox" id="autoSameDate" checked> <span data-i18n="autoSameDate">Lieferdatum nicht vermischen</span></label>
+    <label class="chk"><input type="checkbox" id="autoGroupDest" checked> <span data-i18n="autoGroupDest">Destination zusammenhalten (sonst nächste)</span></label>
+    <label class="chk"><input type="checkbox" id="autoAdjacentOnly"> <span data-i18n="autoAdjacentOnly">Nur angrenzende Destinationen</span></label>
+    <label class="chk"><input type="checkbox" id="autoSameCustomer"> <span data-i18n="autoSameCustomer">Nur gleiche Kunden auf eine Ladung</span></label>
+    <label class="chk"><input type="checkbox" id="autoFillExisting" checked> <span data-i18n="autoFillExisting">Bestehende Ladungen zuerst auffüllen</span></label>
+    <div class="modalbtns">
+      <button id="autoStart" class="primary" data-i18n="autoStart">Erstellen</button>
+    </div>
+  </div>
+</div>
+
 <div id="settingsModal">
   <div class="modalbox settingsbox">
     <h3 data-i18n="setTitle">Einstellungen</h3>
@@ -152,6 +182,13 @@
     </div>
     <h4 data-i18n="setLanguage">Sprache / Language</h4>
     <select id="langSel" class="txt" style="width:auto"><option value="de">Deutsch</option><option value="en">English</option><option value="hu">Magyar</option></select>
+    <h4 data-i18n="setAlgo">Lade-Algorithmus</h4>
+    <select id="algoSel" class="txt" style="width:auto"></select>
+    <p id="algoInfo" class="algoinfo"></p>
+    <h4 data-i18n="setHistory">Verlauf (Rückgängig/Wiederholen)</h4>
+    <label class="chk" style="gap:8px"><span data-i18n="setHistoryMax">Maximale Anzahl gespeicherter Schritte</span>
+      <input type="number" id="setHistoryMax" class="txt num" min="1" max="999" step="1" style="width:72px"></label>
+    <p class="algoinfo" data-i18n="setHistoryInfo">Wie viele Rückgängig-/Wiederholen-Schritte gemerkt werden. Wird in der rechten Spalte unter „Verlauf" angezeigt.</p>
     <h4 data-i18n="setDisplay">Anzeige</h4>
     <label class="chk switch"><input type="checkbox" class="toggle" id="setCrosshair"> <span data-i18n="setCrosshair">Fadenkreuz / Distanzanzeige beim Überfahren freier Lücken</span></label>
     <div class="modalbtns">

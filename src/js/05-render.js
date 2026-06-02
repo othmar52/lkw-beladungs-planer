@@ -69,6 +69,25 @@ function renderTotals(layout){
     `<span>${t('truckLen')} <b>${L.toFixed(2)} m</b></span>` +
     hiddenSpan;
 }
+// the Verlauf (history) view: last few undo/redo steps, click to jump
+function historyHtml(){
+  const h = historyView();
+  if(!h.u.length && !h.r.length) return `<div class="empty" style="grid-column:auto">${t('histEmpty')}</div>`;
+  let s = `<div class="histlist">`;
+  for(let i=h.u.length-1; i>=0; i--){   // past: oldest at top, most recent just above "now"
+    const e = h.u[i];
+    s += `<div class="histitem undo" data-hk="undo" data-hs="${e.steps}" title="${esc(t('histJump'))}">`+
+         `<span class="hdot"></span><span class="hlbl">${esc(e.label||t('hist_change'))}</span></div>`;
+  }
+  s += `<div class="histitem now"><span class="hdot nowdot"></span><span class="hlbl">${esc(t('histNow'))}</span></div>`;
+  if(h.r.length){
+    s += `<div class="histdiv">${esc(t('histRedo'))}</div>`;
+    for(const e of h.r)   // future: next redo first
+      s += `<div class="histitem redo" data-hk="redo" data-hs="${e.steps}" title="${esc(t('histJump'))}">`+
+           `<span class="hdot"></span><span class="hlbl">${esc(e.label||t('hist_change'))}</span></div>`;
+  }
+  return s + `</div>`;
+}
 function renderInfo(layout){
   const truck = layout.truck;
   const active = loadOrders(activeLoad());   // virtual orders on the active load (qty = assigned)
@@ -76,9 +95,25 @@ function renderInfo(layout){
   const over = layout.placements.filter(p=>p.overflow).reduce((s,p)=> s + (p.stack||1), 0);
   const loaded = totalPal - over;
   const countTxt = over>0 ? t('palLoaded', loaded, totalPal) : t('palCount', totalPal);
+  const histMode = settings.rightView==="history";
   document.getElementById("infoHead").innerHTML =
-    `<span>${t('ladeinfo')}</span>` + (active.length ? `<span class="infocount ${over>0?"bad":""}">${esc(countTxt)}</span>` : "");
+    `<span class="rvtog"><button type="button" class="rvbtn ${!histMode?"on":""}" data-rv="info">${esc(t('tabInfo'))}</button>`+
+    `<button type="button" class="rvbtn ${histMode?"on":""}" data-rv="history">${esc(t('histTitle'))}</button></span>`+
+    (active.length ? `<span class="infocount ${over>0?"bad":""}">${esc(countTxt)}</span>` : "");
   const body = document.getElementById("infoBody");
+  const fmsg = document.getElementById("fitMsg");
+  if(histMode){
+    fmsg.style.display = "none";
+    body.innerHTML = historyHtml();
+    // keep the newest step ("jetzt") in view so the latest entry is always visible
+    const now = body.querySelector(".histitem.now");
+    if(now){
+      const rN = now.getBoundingClientRect(), rB = body.getBoundingClientRect();
+      body.scrollTop += (rN.top - rB.top) - body.clientHeight/2 + rN.height/2;
+    }
+    return;
+  }
+  fmsg.style.display = "";
   if(active.length===0){ body.innerHTML = `<div class="empty" style="grid-column:auto">${t('noActive')}</div>`; }
   else{
     body.innerHTML = active.map(o=>{
@@ -91,7 +126,8 @@ function renderInfo(layout){
   const msg = document.getElementById("fitMsg");
   if(active.length===0){ msg.className="fit-ok"; msg.textContent="–"; }
   else if(layout.fits){ msg.className="fit-ok"; msg.textContent=t('fitOk'); }
-  else{ msg.className="fit-bad"; msg.textContent=t('fitBad', over); }
+  else{ msg.className="fit-bad"; msg.innerHTML = `<span>${esc(t('fitBad', over))}</span>`+
+    `<button id="resolveOverflow" class="ofbtn" type="button">${esc(t('overflowResolve'))}</button>`; }
 }
 
 /* ============================ Rendering: order list ============================ */
@@ -113,7 +149,7 @@ let sortState = {key:null, dir:1};
 function dateVal(s){ const m=/^(\d{2})\.(\d{2})\.(\d{2})$/.exec(String(s||"").trim()); return m ? (+m[3])*10000+(+m[2])*100+(+m[1]) : -1; }
 function sortOrders(key){
   const col = SORT_COLS.find(c=>c.key===key); if(!col) return;
-  record();   // reordering the list is an undoable action
+  record(t('hist_sort'));   // reordering the list is an undoable action
   if(sortState.key===key) sortState.dir *= -1; else { sortState.key=key; sortState.dir=1; }
   const dir = sortState.dir, f = col.sortKey || key;
   orders.sort((a,b)=>{
@@ -139,7 +175,7 @@ function assignStatHtml(o){
   for(const l of loads){
     if(l.id===activeLoadId) continue;
     const n = l.assign[o.id]|0; if(n<=0) continue;
-    h += `<span class="chip other" title="${esc(loadLabel(l))}: ${n}">${esc(loadShort(l))}: ${n}</span>`;
+    h += `<span class="chip other" data-loadjump="${l.id}" title="${esc(loadLabel(l))}: ${n} — ${esc(t('jumpLoad'))}">${esc(loadShort(l))}: ${n}</span>`;
   }
   return h;
 }
@@ -162,16 +198,36 @@ function renderTabs(){
 }
 
 // inline header controls (clear active load / hide off-load) — placed between Auf-Ladung and Bemerkung
+// does an order match the current search text?
+function searchMatch(o){
+  return !filterText || (`${o.orderNo} ${o.customer} ${o.destCode} ${o.deliveryDate} ${o.remark}`).toLowerCase().includes(filterText);
+}
+// how many orders are currently hidden (by the search, else by hide-inactive) — shown as a badge
+function hiddenCount(){
+  if(filterText)    return orders.filter(o=>!searchMatch(o)).length;
+  if(hideInactive)  return orders.filter(o=>!onActive(o)).length;
+  return 0;
+}
+// the "Ladeart" column header is a dropdown that sets ALL orders' load type at once
+function setAllModeHtml(){
+  return `<select class="w-art setallmode" title="${esc(t('setAllModeTitle'))}">`+
+    `<option value="">${t('col_loadMode')}</option>`+
+    `<option value="optimized">${t('opt_optimized')}</option>`+
+    `<option value="long">${t('opt_long')}</option>`+
+    `<option value="wide">${t('opt_wide')}</option>`+
+    `<option value="longwide">${t('opt_longwide')}</option>`+
+  `</select>`;
+}
 function headCtlHtml(){
-  const inact = orders.filter(o=>!onActive(o)).length;
   const filtering = !!filterText;   // a search is active -> highlight the hide/show toggle
   const hideTitle = filtering ? t('hideSearch') : (hideInactive?t('hideShow'):t('hideHide'));
+  const hc = hiddenCount();
   return `<span class="headctl">`+
     `<button class="hbtn" data-listact="allInactive" title="${esc(t('titleDeselect'))}">`+
       `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M16 9l-6 6-3-3"/></svg></button>`+
     `<button class="hbtn ${hideInactive?'on':''} ${filtering?'filtering':''}" data-listact="hideInactive" title="${esc(hideTitle)}">`+
       `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20C5 20 1 12 1 12a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><path d="M1 1l22 22"/></svg>`+
-      (hideInactive && !filtering && inact>0?`<span class="cnt">${inact}</span>`:``)+`</button>`+
+      (hc>0?`<span class="cnt">${hc}</span>`:``)+`</button>`+
   `</span>`;
 }
 // always-present add / paste buttons at the end of the list
@@ -197,6 +253,7 @@ function renderList(){
     `<span class="swatch" style="visibility:hidden"></span>` +
     SORT_COLS.map(c=>{
       const arrow = sortState.key===c.key ? `<span class="sortarrow">${sortState.dir>0?"▲":"▼"}</span>` : "";
+      if(c.key==="loadMode") return setAllModeHtml();   // header doubles as "set all orders' load type"
       const span = c.nosort
         ? `<span class="${c.cls}">${t("col_"+c.key)}</span>`
         : `<span class="${c.cls}" data-sort="${c.key}">${t("col_"+c.key)}${arrow}</span>`;
@@ -210,14 +267,13 @@ function renderList(){
     return;
   }
   document.getElementById("listHead").style.display = "";
-  const matches = o => !filterText ||
-    (`${o.orderNo} ${o.customer} ${o.destCode} ${o.deliveryDate} ${o.remark}`).toLowerCase().includes(filterText);
   // an active search overrides "hide inactive": every match shows (inactive orders are searched too)
-  const visible = orders.filter(o => filterText ? matches(o) : (hideInactive ? onActive(o) : true));
+  const visible = orders.filter(o => filterText ? searchMatch(o) : (hideInactive ? onActive(o) : true));
   const note = (visible.length===0) ? `<div class="empty">${t('noMatch')}</div>` : "";
   body.innerHTML = note + visible.map(o=>{
     const stackPossible = 2*o.height <= truck.h;
-    const lm = orderLoadMeters(o,truck).toFixed(1);
+    const lmode = loadModeFor(activeLoad(), o);   // load type of this order ON the active load (per-load override)
+    const lm = orderLoadMeters(Object.assign({}, o, {loadMode:lmode}),truck).toFixed(1);
     return `<div class="order ${onActive(o)?'':'inactive'}" style="--c:${o.color}" data-id="${o.id}">
       <button class="copybtn" title="${t('titleCopyNr')}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
       <div class="fld w-num"><label>${t('col_orderNo')}</label><input class="txt" data-f="orderNo" value="${esc(o.orderNo)}"></div>
@@ -232,10 +288,11 @@ function renderList(){
           <input class="num" data-f="height" value="${o.height}" title="${t('fld_height')}">
         </div></div>
       <div class="fld w-art"><label>${t('col_loadMode')}</label>
-        <select data-f="loadMode">
-          <option value="optimized" ${o.loadMode==="optimized"?"selected":""}>${t('opt_optimized')}</option>
-          <option value="long" ${o.loadMode==="long"?"selected":""}>${t('opt_long')}</option>
-          <option value="wide" ${o.loadMode==="wide"?"selected":""}>${t('opt_wide')}</option>
+        <select data-f="loadMode" class="${lmode!=="optimized"?"lm-forced":""}" title="${esc(t('loadModePerLoad'))}">
+          <option value="optimized" ${lmode==="optimized"?"selected":""}>${t('opt_optimized')}</option>
+          <option value="long" ${lmode==="long"?"selected":""}>${t('opt_long')}</option>
+          <option value="wide" ${lmode==="wide"?"selected":""}>${t('opt_wide')}</option>
+          <option value="longwide" ${lmode==="longwide"?"selected":""}>${t('opt_longwide')}</option>
         </select>
       </div>
       <div class="fld w-seq"><label>${t('col_sequence')}</label>
@@ -288,7 +345,7 @@ function recalc(){
   document.querySelectorAll("#list .order").forEach(card=>{
     const o = orders.find(x=>x.id==card.dataset.id); if(!o) return;
     const lm = card.querySelector(".lmeter");
-    if(lm) lm.textContent = t('loadMeters', orderLoadMeters(o,truck).toFixed(1));
+    if(lm) lm.textContent = t('loadMeters', orderLoadMeters(Object.assign({}, o, {loadMode:loadModeFor(activeLoad(),o)}),truck).toFixed(1));
     const chk = card.querySelector('input[data-f="stackable"]');
     if(chk){
       const possible = 2*o.height <= truck.h;

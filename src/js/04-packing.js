@@ -107,11 +107,58 @@ function lanesPlan(o, W, ground){
   if(!best) best = {lanes:[{unit:a, width:b, count:ground}], length:ground*a, nb:0};  // oversize
   return best;
 }
+// --- "longwide": FORCED mix. Always combine some lengthwise + some crosswise lanes
+// across the width (both orientations present), choosing the combination that fills the
+// truck width fullest; ties broken by shortest load metres. Returns null if no genuine
+// mix fits (then the caller falls back to optimized packing).
+function mixLanesPlan(o, W, ground){
+  if(ground < 2) return null;
+  const a = o.length, b = o.width;
+  const maxLengthwise = Math.floor(W / b), maxCrosswise = Math.floor(W / a);
+  let best = null;
+  for(let nl=1; nl<=maxLengthwise; nl++){
+    for(let nb=1; nb<=maxCrosswise; nb++){
+      const wsum = nl*b + nb*a;
+      if(wsum > W + 0.01) continue;
+      if(nl + nb > ground) continue;          // need enough pallets so BOTH orientations are used
+      const lanes = [];
+      for(let i=0;i<nl;i++) lanes.push({unit:a, width:b, count:0});  // lengthwise lane
+      for(let i=0;i<nb;i++) lanes.push({unit:b, width:a, count:0});  // crosswise lane
+      for(let k=0;k<ground;k++){                                     // balance pallets
+        let bl = lanes[0];
+        for(const ln of lanes) if((ln.count+1)*ln.unit < (bl.count+1)*bl.unit) bl = ln;
+        bl.count++;
+      }
+      if(lanes.some(l=>l.count===0)) continue;                       // a lane stayed empty -> not a real mix
+      const length = Math.max(...lanes.map(l=>l.count*l.unit));
+      // primary: fullest width; tie: shortest load metres
+      if(!best || wsum > best.wsum + 0.01 || (Math.abs(wsum-best.wsum)<0.01 && length < best.length-0.01))
+        best = {lanes, length, wsum};
+    }
+  }
+  return best;
+}
 // Best packing of an order -> strips.
 //  mode "lanes": horizontal lanes (each can slide into gaps individually).
 //  mode "rows":  cross-rows as a (rigid) block; also for fixed load mode long/wide.
 function packGround(o, W, ground){
   if(ground<=0) return {mode:"none"};
+  // forced mix (longwide): lengthwise + crosswise lanes side by side, balanced & interlocked.
+  if(o.loadMode==="longwide"){
+    const mp = mixLanesPlan(o, W, ground);
+    if(mp){
+      const strips = []; let y = 0;
+      for(const ln of mp.lanes){
+        if(ln.count===0) continue;
+        const units = [];
+        for(let k=0;k<ln.count;k++) units.push({w:ln.unit, h:ln.width});
+        strips.push({y, h:ln.width, units});
+        y += ln.width;
+      }
+      if(strips.length) return {mode:"lanes", strips};
+    }
+    // no genuine mix possible -> fall through to optimized packing
+  }
   // fixed orientation (long/wide): build the LARGEST full rectangle in the requested orientation;
   // the overflow (pallets that don't complete a row) is rotated to the other orientation and laid
   // flat behind it — only when that is actually shorter. Lanes interlock with neighbours.
@@ -188,7 +235,12 @@ function orderLoadMeters(o, truck){
   const ground = stack ? Math.ceil(o.qty/2) : o.qty;
   if(ground<=0) return 0;
   let len = rowsLength(o, truck.w, ground);
-  if(o.loadMode!=="long" && o.loadMode!=="wide") len = Math.min(len, lanesPlan(o, truck.w, ground).length);
+  if(o.loadMode==="longwide"){
+    const mp = mixLanesPlan(o, truck.w, ground);
+    if(mp) len = mp.length;
+  } else if(o.loadMode!=="long" && o.loadMode!=="wide"){
+    len = Math.min(len, lanesPlan(o, truck.w, ground).length);
+  }
   return Math.ceil(len / 100) / 10;
 }
 
@@ -298,6 +350,21 @@ function layoutSequenceGreedy(seq, truck){
     const sc = ()=>{ const s = stack ? Math.min(2, left) : 1; left -= s; return s; };
     const lengthwise = {fx:o.length, fy:o.width}, crosswise = {fx:o.width, fy:o.length};
     const oris = o.loadMode==="long" ? [lengthwise] : o.loadMode==="wide" ? [crosswise] : [lengthwise, crosswise];
+    // forced mix: place as a balanced lane package (per-pallet greedy would collapse to one orientation)
+    if(o.loadMode==="longwide"){
+      const pk = packGround(o, W, ground);
+      if(pk.mode==="lanes"){
+        for(const st of pk.strips){
+          let cx = skyMax(sky, st.y, st.y+st.h);
+          for(const u of st.units){
+            placements.push({ x:cx, y:st.y, w:u.w, h:u.h, color:o.color, order:o, stack:sc() });
+            cx += u.w;
+          }
+          sky = skySet(sky, st.y, st.y+st.h, cx);
+        }
+        continue;
+      }
+    }
     for(let k=0; k<ground; k++){
       const ys = new Set([0]); for(const s of sky){ ys.add(s.y0); ys.add(s.y1); }
       let best = null;

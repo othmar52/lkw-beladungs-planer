@@ -9,7 +9,7 @@ const DEFAULT_TRUCKS = {
 };
 let TRUCKS = {};
 let currentTruck = "Plane";
-const settings = { showCrosshair: true, lang: "de" };
+const settings = { showCrosshair: true, lang: "de", algo: "standard", rightView: "info", historyMax: 200 };
 const cloneDefaults = () => JSON.parse(JSON.stringify(DEFAULT_TRUCKS));
 function loadConfig(){
   try{
