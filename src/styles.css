@@ -40,6 +40,10 @@
   .ltabadd{align-self:flex-end;display:inline-flex;align-items:center;padding:6px 9px;cursor:pointer;color:var(--muted);
            background:none;border:1px dashed var(--line);border-radius:9px;}
   .ltabadd:hover{color:var(--text);border-color:var(--accent);background:#27313e;}
+  .ltabclean{align-self:flex-end;display:inline-flex;align-items:center;gap:5px;padding:6px 9px;cursor:pointer;
+             color:var(--danger);background:none;border:1px dashed #5a2e30;border-radius:9px;}
+  .ltabclean:hover{background:#2a1a1c;border-color:var(--danger);}
+  .ltabcleann{font-size:11px;font-weight:800;background:var(--danger);color:#fff;border-radius:8px;padding:0 6px;min-width:16px;text-align:center;}
   select,input,button{font-family:inherit;font-size:13px;}
   select,.txt{
     border:1px solid var(--line);border-radius:7px;padding:6px 9px;background:var(--input);color:var(--text);
@@ -137,8 +141,11 @@
   /* a search filter is active -> amber ring on the hide/show toggle (matches are shown incl. inactive) */
   .headctl .hbtn.filtering{border-color:#fbbf24;color:#fbbf24;box-shadow:0 0 0 1px #fbbf24 inset;}
   .headctl .hbtn.filtering.on{color:#fff;}
+  /* badge sits in a non-clipping wrapper (the button itself has overflow:hidden for the press-fill) */
+  .headctl .hbtnwrap{position:relative;display:inline-flex;}
   .headctl .cnt{position:absolute;top:-6px;right:-6px;background:var(--accent);color:#fff;font-size:9px;
-                font-weight:800;line-height:1;padding:2px 4px;border-radius:9px;border:1px solid var(--bg);}
+                font-weight:800;line-height:1;padding:2px 4px;border-radius:9px;border:1px solid var(--bg);
+                pointer-events:none;z-index:2;}
   /* search box in the header (right side) */
   .headsearch{flex:none;align-self:center;display:flex;align-items:center;gap:6px;color:var(--muted);
               border:1px solid var(--line);border-radius:7px;background:var(--input);padding:4px 9px;}
@@ -205,12 +212,31 @@
   .numbox .sep{width:1px;background:var(--line);}
   .del{align-self:center;flex:none;}
   /* field widths */
-  .w-num{width:66px}.w-customer{width:100px}.w-date{width:66px}.w-dest{width:44px}
+  .w-num{width:66px}.w-customer{width:100px}.w-date{width:66px}.w-dest{width:44px}.w-custno{width:84px}
   .w-pal{width:36px}.w-mm{width:50px}.w-art{width:120px}.w-lbh{width:118px}
   /* a bit of breathing room left & right of the L×B×H input group (header + rows alike) */
   .w-pal + .w-lbh{margin-left:11px}
   .w-lbh + .w-art{margin-left:11px}
   /* L×B×H joined input group (one bordered box, three centred number inputs with × separators) */
+  /* customer number + address info icon */
+  .custnobox{position:relative;width:100%;}
+  .custnobox input{width:100%;}
+  .addrinfo{position:absolute;right:-6px;top:-7px;width:15px;height:15px;padding:0;
+    border-radius:50%;border:1px solid var(--bg);background:var(--accent);color:#fff;font-size:10px;
+    font-weight:800;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-style:italic;z-index:2;}
+  .addrinfo:hover{background:var(--accent-d);}
+  #custSuggest{position:fixed;z-index:60;display:none;max-height:260px;max-width:440px;overflow:auto;background:var(--panel2);
+    border:1px solid var(--accent);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.5);padding:3px;}
+  #custSuggest .cs-item{display:flex;flex-direction:column;gap:1px;padding:5px 9px;border-radius:6px;cursor:pointer;font-size:12px;}
+  #custSuggest .cs-top{display:flex;gap:8px;align-items:baseline;white-space:nowrap;}
+  #custSuggest .cs-item:hover,#custSuggest .cs-item.active{background:var(--accent);color:#fff;}
+  #custSuggest .cs-top span{color:var(--muted);overflow:hidden;text-overflow:ellipsis;}
+  #custSuggest .cs-addr{color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  #custSuggest .cs-item:hover .cs-top span,#custSuggest .cs-item.active .cs-top span,
+  #custSuggest .cs-item:hover .cs-addr,#custSuggest .cs-item.active .cs-addr{color:#e5edff;}
+  #addrPop{position:fixed;z-index:50;display:none;max-width:260px;background:var(--panel2);color:var(--text);
+    border:1px solid var(--accent);border-radius:8px;padding:8px 11px;font-size:12px;line-height:1.4;
+    white-space:pre-line;box-shadow:0 8px 24px rgba(0,0,0,.5);}
   .lbhbox{display:flex;align-items:stretch;border:1px solid var(--line);border-radius:7px;overflow:hidden;background:var(--input);width:100%;}
   .lbhbox input{border:none;flex:1 1 0;min-width:0;width:auto;text-align:center;padding:3px 1px;background:var(--input);color:var(--text);font-size:12px;}
   .lbhbox input:focus{outline:2px solid var(--accent);outline-offset:-2px;}
@@ -269,6 +295,9 @@
   .addtruck #ntAdd{width:38px;padding:6px;justify-content:center;font-size:18px;font-weight:800;flex:none;}
   .settingsbox .chk{font-weight:600;}
   .algoinfo{color:var(--muted);font-size:11.5px;line-height:1.45;margin:6px 0 0;}
+  /* headings whose explanation is a hover tooltip get a small info marker + help cursor */
+  .hashelp{cursor:help;}
+  .hashelp::after{content:" ⓘ";color:var(--accent);font-weight:400;font-size:11px;}
   .modalbox{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;width:min(680px,92vw);box-shadow:0 20px 50px rgba(0,0,0,.5);}
   .modalbox h3{margin:0 0 4px;}
   .modalbox p{margin:0 0 10px;color:var(--muted);}

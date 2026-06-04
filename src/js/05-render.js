@@ -136,6 +136,7 @@ const SORT_COLS = [
   {key:"customer",          label:"Kunde",       cls:"w-customer"},
   {key:"deliveryDate",    label:"Lieferdatum", cls:"w-date", date:true},
   {key:"destCode",       label:"Dest",        cls:"w-dest"},
+  {key:"customerNo",      label:"Kundennr.",   cls:"w-custno"},
   {key:"qty",         label:"Pal.",        cls:"w-pal", num:true},
   {key:"lbh",             label:"L×B×H mm",    cls:"w-lbh", num:true, sortKey:"length"},
   {key:"loadMode",        label:"Ladeart",     cls:"w-art"},
@@ -194,6 +195,12 @@ function renderTabs(){
   });
   h += `<button class="ltabadd" data-loadadd="1" title="${esc(t('loadAdd'))}">`+
     `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg></button>`;
+  // delete-empty-loads button — only shown when at least one load is empty (and more than one exists)
+  const emptyN = loads.filter(l=> !Object.values(l.assign).some(v=>v>0)).length;
+  if(loads.length>1 && emptyN>0)
+    h += `<button class="ltabclean" data-loadcleanempty="1" title="${esc(t('autoDeleteEmptyNow'))} (${emptyN})">`+
+      `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M6 6l1 14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-14M10 11v6M14 11v6"/></svg>`+
+      `<span class="ltabcleann">${emptyN}</span></button>`;
   bar.innerHTML = h;
 }
 
@@ -225,9 +232,11 @@ function headCtlHtml(){
   return `<span class="headctl">`+
     `<button class="hbtn" data-listact="allInactive" title="${esc(t('titleDeselect'))}">`+
       `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M16 9l-6 6-3-3"/></svg></button>`+
-    `<button class="hbtn ${hideInactive?'on':''} ${filtering?'filtering':''}" data-listact="hideInactive" title="${esc(hideTitle)}">`+
-      `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20C5 20 1 12 1 12a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><path d="M1 1l22 22"/></svg>`+
-      (hc>0?`<span class="cnt">${hc}</span>`:``)+`</button>`+
+    `<span class="hbtnwrap">`+
+      `<button class="hbtn ${hideInactive?'on':''} ${filtering?'filtering':''}" data-listact="hideInactive" title="${esc(hideTitle)}">`+
+        `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20C5 20 1 12 1 12a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><path d="M1 1l22 22"/></svg></button>`+
+      (hc>0?`<span class="cnt">${hc}</span>`:``)+
+    `</span>`+
   `</span>`;
 }
 // always-present add / paste buttons at the end of the list
@@ -280,6 +289,11 @@ function renderList(){
       <div class="fld w-customer"><label>${t('col_customer')}</label><input class="txt" data-f="customer" value="${esc(o.customer)}"></div>
       <div class="fld w-date"><label>${t('col_deliveryDate')}</label><input class="txt" data-f="deliveryDate" value="${esc(o.deliveryDate)}"></div>
       <div class="fld w-dest"><label>${t('col_destCode')}</label><input class="txt" data-f="destCode" value="${esc(o.destCode)}"></div>
+      <div class="fld w-custno"><label>${t('col_customerNo')}</label>
+        <div class="custnobox">
+          <input class="txt" data-f="customerNo" value="${esc(o.customerNo||'')}" placeholder="${esc(t('ph_customerNo'))}"${o.address?` title="${esc(o.address)}"`:''}>
+          ${o.address?`<button type="button" class="addrinfo" data-act="addr" title="${esc(o.address)}">i</button>`:''}
+        </div></div>
       <div class="fld w-pal"><label>${t('col_qty')}</label><input class="txt num" data-f="qty" value="${o.qty}"></div>
       <div class="fld w-lbh"><label>${t('col_lbh')}</label>
         <div class="lbhbox">
@@ -379,5 +393,6 @@ function recalc(){
   });
   updateHeadCtl();
   renderTabs();   // keep tab pallet counts live after assignment edits
+  if(typeof saveState==="function") saveState();   // persist the working state to localStorage
 }
 function renderAll(){ renderList(); recalc(); }

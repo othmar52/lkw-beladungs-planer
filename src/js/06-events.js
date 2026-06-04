@@ -83,6 +83,12 @@ document.getElementById("loadTabs").addEventListener("click", e=>{
   const del = e.target.closest("[data-loaddel]");
   if(del){ e.stopPropagation(); deleteLoad(+del.dataset.loaddel); return; }
   if(e.target.closest("[data-loadadd]")){ addLoad(); return; }
+  if(e.target.closest("[data-loadcleanempty]")){
+    const n = deleteEmptyLoads();
+    renderAll();
+    notify(n>0?"ok":"warn", n>0 ? t('emptyLoadsDeleted', n) : t('noEmptyLoads'), "", 2500);
+    return;
+  }
   const tab = e.target.closest("[data-loadid]");
   if(tab) switchLoad(+tab.dataset.loadid);
 });
@@ -108,7 +114,7 @@ function startRenameTab(id){
       const step = ev.shiftKey ? loads.length-1 : 1;
       const nextId = loads[(idx+step) % loads.length].id;
       commit();
-      if(nextId!==id) startRenameTab(nextId);   // chain into the next tab's name
+      if(nextId!==id){ switchLoad(nextId); startRenameTab(nextId); }   // focus that load AND edit its name
     }
   });
   inp.addEventListener("click", ev=> ev.stopPropagation());
@@ -174,16 +180,28 @@ document.getElementById("ntAdd").addEventListener("click", ()=>{
   ["ntName","ntL","ntW","ntH"].forEach(id=> document.getElementById(id).value="");
   document.getElementById("ntName").focus();
 });
-document.getElementById("setResetTrucks").addEventListener("click", ()=>{
+// show/hide the debug-only toolbar buttons (Zufallsladung + "Als Testfall exportieren")
+function applyDebug(){
+  document.querySelectorAll(".dbgonly").forEach(b=> b.style.display = settings.debug ? "" : "none");
+}
+// "Einstellungen zurücksetzen": LKW-Typen + alle Einstellungen (Sprache, Algo, Verlauf, Fadenkreuz, Debug) auf Default
+document.getElementById("setResetAll").addEventListener("click", ()=>{
   TRUCKS = cloneDefaults();
   if(!TRUCKS[currentTruck]) currentTruck = Object.keys(TRUCKS)[0];
-  saveTrucks(); rebuildTruckSelect(); renderTruckTable(); recalc();
+  Object.assign(settings, DEFAULT_SETTINGS);
+  saveTrucks(); saveSettings();
+  rebuildTruckSelect(); renderTruckTable();
+  applyStatic(); applyDebug();
+  openSettings();   // refresh the dialog controls to the defaults
+  renderAll();
 });
 const setCrosshair = document.getElementById("setCrosshair");
 setCrosshair.addEventListener("change", ()=>{
   settings.showCrosshair = setCrosshair.checked; saveSettings();
   if(!settings.showCrosshair) clearHoverGuide();
 });
+const setDebug = document.getElementById("setDebug");
+setDebug.addEventListener("change", ()=>{ settings.debug = setDebug.checked; saveSettings(); applyDebug(); });
 document.getElementById("langSel").addEventListener("change", e=>{
   settings.lang = e.target.value; saveSettings();
   applyStatic();   // static texts
@@ -195,7 +213,8 @@ document.getElementById("langSel").addEventListener("change", e=>{
 const ALGOS = [{ id:"standard", name:"algoStandard", info:"algoStandardInfo" }];
 const algoSel = document.getElementById("algoSel");
 function updateAlgoInfo(){ const a = ALGOS.find(x=>x.id===algoSel.value) || ALGOS[0];
-  document.getElementById("algoInfo").textContent = t(a.info); }
+  const txt = t(a.info); algoSel.title = txt;            // explanation shown as a hover tooltip
+  const h = document.getElementById("algoH"); if(h) h.title = txt; }
 function renderAlgoOptions(){
   algoSel.innerHTML = ALGOS.map(a=>`<option value="${a.id}" title="${esc(t(a.info))}">${esc(t(a.name))}</option>`).join("");
   algoSel.value = ALGOS.some(a=>a.id===settings.algo) ? settings.algo : "standard";
@@ -212,9 +231,11 @@ setHistoryMax.addEventListener("change", ()=>{
 function openSettings(){
   renderTruckTable();
   setCrosshair.checked = settings.showCrosshair;
+  setDebug.checked = !!settings.debug;
   document.getElementById("langSel").value = settings.lang;
   setHistoryMax.value = historyMax();
   renderAlgoOptions();
+  if(typeof updateExcelStatus==="function") updateExcelStatus();
   settingsModal.classList.add("open");
 }
 document.getElementById("btnSettings").addEventListener("click", openSettings);
@@ -683,12 +704,76 @@ document.getElementById("splitCreate").addEventListener("click", ()=>{
   notify("ok", t('splitDone', created) + (remaining>0 ? " "+t('splitRest', remaining) : ""), "", 4500);
 });
 
+// remove ALL loads and start over with a single empty load (the order pool is kept). Undoable.
+function clearAllLoads(){
+  record(t('hist_loadDel'));
+  loads = [ makeLoad({ truck: currentTruck }) ];
+  activeLoadId = loads[0].id;
+  clearManualMaps();
+  manualMode = false; manualPallets = null;
+  syncActiveLoadMirror();
+  if(typeof syncManualUI==="function") syncManualUI();
+  renderAll();
+  notify("ok", t('loadsCleared'), "", 2500);
+}
+document.getElementById("btnClearLoads").addEventListener("click", clearAllLoads);
+// delete every load that has no pallets assigned (keeps at least one). Returns the number removed.
+function deleteEmptyLoads(record_=true){
+  const empties = loads.filter(l=> !Object.values(l.assign).some(v=>v>0));
+  if(!empties.length) return 0;
+  if(loads.length - empties.length < 1) empties.pop();   // always keep at least one load
+  if(!empties.length) return 0;
+  if(record_) record(t('hist_loadDel'));
+  const ids = new Set(empties.map(l=>l.id));
+  loads = loads.filter(l=> !ids.has(l.id));
+  ids.forEach(id=>{ delete manualByLoad[id]; delete manualOnByLoad[id]; });
+  if(!loads.some(l=>l.id===activeLoadId)){ activeLoadId = loads[0].id; syncActiveLoadMirror(); restoreManual(); }
+  return empties.length;
+}
+// briefly present each affected load one after another (showing only its own orders), then return to
+// the first load. ANY user interaction (click/key/scroll) aborts the walkthrough immediately.
+let presentTimer = null, presentAbort = null, presentPrevHide = false;
+const PRESENT_EVENTS = ["pointerdown","keydown","wheel"];
+function endPresent(){
+  if(presentTimer){ clearTimeout(presentTimer); presentTimer = null; }
+  if(presentAbort){ PRESENT_EVENTS.forEach(ev=> document.removeEventListener(ev, presentAbort, true)); presentAbort = null; }
+}
+function presentLoads(ids){
+  endPresent();
+  const seq = ids.filter(id=> loads.some(l=>l.id===id));
+  if(seq.length < 2) return;            // nothing meaningful to walk through
+  presentPrevHide = hideInactive;
+  hideInactive = true;                  // show only the orders that sit on the visited load
+  let i = 0;
+  presentAbort = ()=>{                   // user interacted -> stop and restore the normal view
+    endPresent();
+    hideInactive = presentPrevHide;
+    renderAll();
+  };
+  PRESENT_EVENTS.forEach(ev=> document.addEventListener(ev, presentAbort, true));
+  const step = ()=>{
+    if(i >= seq.length){
+      endPresent();
+      hideInactive = presentPrevHide;
+      switchLoad(loads.length ? loads[0].id : seq[0]);   // back to the first load
+      return;
+    }
+    switchLoad(seq[i]); i++;
+    presentTimer = setTimeout(step, 900);
+  };
+  step();
+}
 // auto-create loads dialog
 const autoModal = document.getElementById("autoModal");
 function closeAuto(){ autoModal.classList.remove("open"); }
 document.getElementById("btnAuto").addEventListener("click", ()=> autoModal.classList.add("open"));
 document.getElementById("autoClose").addEventListener("click", closeAuto);
 autoModal.addEventListener("click", e=>{ if(e.target===autoModal) closeAuto(); });
+document.getElementById("autoDeleteEmptyNow").addEventListener("click", ()=>{
+  const n = deleteEmptyLoads();
+  renderAll();
+  notify(n>0?"ok":"warn", n>0 ? t('emptyLoadsDeleted', n) : t('noEmptyLoads'), "", 2500);
+});
 document.getElementById("autoStart").addEventListener("click", ()=>{
   if(!orders.some(o=> openQty(o)>0)){ notify("warn", t('autoNothing')); closeAuto(); return; }
   const opts = {
@@ -698,12 +783,15 @@ document.getElementById("autoStart").addEventListener("click", ()=>{
     sameCustomer: document.getElementById("autoSameCustomer").checked,
     fillExisting: document.getElementById("autoFillExisting").checked,
   };
+  const delEmpty = document.getElementById("autoDeleteEmpty").checked;
   record(t('hist_auto'));
   const r = autoCreateLoads(opts);
+  if(delEmpty) deleteEmptyLoads(false);
   if(manualMode) seedManualFromAuto();
   closeAuto();
   renderAll();
   notify("ok", t('autoDone', r.created, r.leftover), "", 5000);
+  if(r.presentIds && r.presentIds.length) presentLoads(r.presentIds);   // walk through every filled/new load
 });
 
 // export as JSON
@@ -714,7 +802,10 @@ const pad2 = n => String(n).padStart(2,"0");
 function defaultExportName(){
   const d = new Date();
   const stamp = `${pad2(d.getDate())}.${pad2(d.getMonth()+1)}.${d.getFullYear()} ${pad2(d.getHours())}-${pad2(d.getMinutes())}`;
-  const base = loadName.trim() || "LKW-Ladung";   // a load name replaces the "LKW-Ladung" prefix
+  const nonEmpty = loads.filter(l=> Object.values(l.assign).some(v=>v>0)).length;
+  // with several loads a single load name is misleading -> generic name with the load count
+  if(nonEmpty > 1) return `LKW-Ladungen (${nonEmpty}) ${stamp}`;
+  const base = loadName.trim() || "LKW-Ladung";   // single load: its name replaces the prefix
   return `${base} ${stamp}`;
 }
 function doExport(name){
@@ -732,7 +823,8 @@ function doExport(name){
       assign: pool.map(o=> l.assign[o.id]|0),        // pallet counts aligned to the orders index
       modeOf: pool.map(o=> (l.modeOf && l.modeOf[o.id]) || "") })),   // per-load load type ("" = use order default)
     orders: pool.map(o=>({ orderNo:o.orderNo, customer:o.customer, deliveryDate:o.deliveryDate,
-      destCode:o.destCode, qty:o.qty, length:o.length, width:o.width, height:o.height,
+      destCode:o.destCode, customerNo:o.customerNo||"", address:o.address||"",
+      qty:o.qty, length:o.length, width:o.width, height:o.height,
       loadMode:o.loadMode, sequence:o.sequence, stackable:o.stackable, remark:o.remark, color:o.color })),
     // legacy mirrors (active load) so an older importer still finds a usable single load
     truck: currentTruck, name: loadName, note: loadNote,
@@ -922,7 +1014,7 @@ fileImport.addEventListener("change", e=>{
       record(t('hist_paste'));
       orders = list.map(d => makeOrder({
         orderNo:d.orderNo||"", customer:d.customer||"", deliveryDate:d.deliveryDate||"",
-        destCode:d.destCode||"", qty:+d.qty||1,
+        destCode:d.destCode||"", customerNo:d.customerNo||"", address:d.address||"", qty:+d.qty||1,
         length:+d.length||1200, width:+d.width||800, height:+d.height||1200,
         loadMode:["optimized","long","wide","longwide"].includes(d.loadMode)?d.loadMode:"optimized",
         sequence:Math.max(1,Math.min(99,+d.sequence||1)),
@@ -1040,14 +1132,35 @@ list.addEventListener("input", e=>{
   if(["length","width","height","qty","loadMode","sequence","assignQty"].includes(f)){
     if(manualMode) seedManualFromAuto();   // qty/size/sequence/assignment change the pallet set -> rebuild the hand layout
     recalc();
-  }
+  } else { saveStateSoon(); }   // text fields (name/no./customer/remark…) don't recalc -> persist (debounced)
+  if(f==="customerNo" && typeof custSuggest==="function") custSuggest(e.target, o);   // autocomplete suggestions
 });
+// focusing OR (re-)clicking a customer-number field suggests numbers (matched by the order's customer name)
+function openCustSuggestFor(target){
+  if(!(target.dataset && target.dataset.f==="customerNo") || typeof custSuggest!=="function") return;
+  const card = target.closest(".order"); const o = card && orders.find(x=>x.id==card.dataset.id);
+  if(o) custSuggest(target, o);
+}
+list.addEventListener("focusin", e=> openCustSuggestFor(e.target));
+list.addEventListener("click", e=> openCustSuggestFor(e.target));   // re-click on an already-focused field reopens it
+// arrow keys / Enter navigate the suggestion list
+list.addEventListener("keydown", e=>{
+  if(e.target.dataset && e.target.dataset.f==="customerNo" && typeof custSuggestKey==="function"){
+    if(custSuggestKey(e)) e.preventDefault();
+  }
+}, true);
 list.addEventListener("change", e=>{
   const card = e.target.closest(".order"); if(!card) return;
   const o = orders.find(x=>x.id==card.dataset.id); if(!o) return;
   const f = e.target.dataset.f;
   if(f==="stackable"){ record(t('hist_stack')); o.stackable = e.target.checked; }
   else if(f==="loadMode"){ record(t('hist_mode')); const al = activeLoad(); (al.modeOf || (al.modeOf={}))[o.id] = e.target.value; renderList(); }
+  else if(f==="customerNo"){   // look the number up in the Excel list -> fill the address (tooltip + info icon)
+    if(typeof hideCustSuggest==="function") hideCustSuggest();
+    o.customerNo = e.target.value;
+    if(typeof resolveOrderAddress==="function") resolveOrderAddress(o);
+    renderList(); saveState(); return;
+  }
   else return;
   // structural change (stacking/load mode changes the pallet set) -> rebuild the hand layout
   if(manualMode) seedManualFromAuto();
@@ -1084,7 +1197,25 @@ list.addEventListener("click", e=>{
     if(manualMode) seedManualFromAuto();
     recalc();
   }
+  else if(act==="addr"){ showAddrPopover(btn, o.address||""); }
 });
+// small floating popover showing an order's full address (info icon next to the customer number)
+function showAddrPopover(anchor, text){
+  let pop = document.getElementById("addrPop");
+  if(!pop){
+    pop = document.createElement("div"); pop.id = "addrPop"; document.body.appendChild(pop);
+    document.addEventListener("click", ev=>{
+      if(pop.style.display==="block" && !pop.contains(ev.target) && !ev.target.closest('[data-act="addr"]')) pop.style.display="none";
+    });
+    window.addEventListener("resize", ()=>{ pop.style.display="none"; });
+  }
+  if(!text){ pop.style.display="none"; return; }
+  pop.textContent = text;
+  pop.style.display = "block";
+  const r = anchor.getBoundingClientRect();
+  pop.style.left = Math.max(6, Math.min(window.innerWidth - 266, r.left - 120)) + "px";
+  pop.style.top  = Math.min(window.innerHeight - 80, r.bottom + 6) + "px";
+}
 // sortable column headers
 list.addEventListener("click", e=>{
   const h = e.target.closest("[data-sort]"); if(!h) return;
@@ -1318,6 +1449,12 @@ window.addEventListener("resize", ()=>{ clearTimeout(resizeTimer); resizeTimer =
 
 /* ============================ Start ============================ */
 applyStatic();
+applyDebug();   // debug-only buttons follow the persisted setting
+if(loadState()){               // restore the full working state from the last session
+  syncActiveLoadMirror();
+  if(typeof syncManualUI==="function") syncManualUI();
+}
 updateNoteBtn();
 renderAll();
 wireSearch();   // the search box lives in the (persistent) list header created by renderAll
+window.addEventListener("beforeunload", ()=>{ try{ saveState(); }catch(_){} });   // flush latest state on reload/close

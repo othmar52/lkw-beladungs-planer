@@ -139,6 +139,7 @@ function autoCreateLoads(opts){
   const loadDate = L=>{ for(const o of orders) if((L.assign[o.id]|0)>0 && o.deliveryDate) return o.deliveryDate; return null; };
   const loadCustomer = L=>{ for(const o of orders) if((L.assign[o.id]|0)>0 && o.customer) return o.customer; return null; };
   const loadDests = L=>{ const s=[]; for(const o of orders) if((L.assign[o.id]|0)>0 && o.destCode) s.push(o.destCode); return s; };
+  const loadRemark = L=>{ for(const o of orders) if((L.assign[o.id]|0)>0) return (o.remark||"").trim(); return ""; };
   const compatible = (L,o)=>{
     if(opts.sameDate){ const d=loadDate(L); if(d && o.deliveryDate && o.deliveryDate!==d) return false; }
     if(opts.sameCustomer){ const c=loadCustomer(L); if(c && o.customer && o.customer!==c) return false; }
@@ -152,24 +153,56 @@ function autoCreateLoads(opts){
   const pickFor = L=>{
     const cands = orders.filter(o=> open[o.id]>0 && compatible(L,o) && fitCount(L,o,open[o.id])>0);
     if(!cands.length) return null;
+    // prefer orders with the SAME customer AND remark as what is already on the load (better grouping)
+    const lc = loadCustomer(L), lr = loadRemark(L);
+    const cr = o=> (lc && (o.customer||"")===lc && (o.remark||"").trim()===lr) ? 0 : 1;
     if(opts.groupDest){
       const dests = loadDests(L);
       const score = o=>{ if(!dests.length) return 0; if(dests.includes(o.destCode)) return 0;
         let m=Infinity; for(const d of dests) m=Math.min(m, destDist(o.destCode,d)); return m; };
-      cands.sort((a,b)=> score(a)-score(b) || open[b.id]-open[a.id]);
-    } else cands.sort((a,b)=> open[b.id]-open[a.id]);
+      cands.sort((a,b)=> cr(a)-cr(b) || score(a)-score(b) || open[b.id]-open[a.id]);
+    } else cands.sort((a,b)=> cr(a)-cr(b) || open[b.id]-open[a.id]);
     return cands[0];
   };
   const fillLoad = L=>{ let g=0; while(g++<999){ const o=pickFor(L); if(!o) break; const k=fitCount(L,o,open[o.id]); if(k<=0) break; put(L,o,k); } };
+  const palCount = L => Object.values(L.assign).reduce((s,v)=>s+(v|0),0);
+  const before = new Map(loads.map(l=>[l.id, palCount(l)]));   // remember fill level before auto
   if(opts.fillExisting) for(const L of loads.slice()) fillLoad(L);
-  let created=0, g=0;
+  let created=0, g=0; const newIds=[];
   while(hasOpen() && g++<999){
     const L = makeLoad({ truck:tn });
     fillLoad(L);
     if(!Object.keys(L.assign).length) break;   // nothing fits (oversize remainder) -> stop
-    loads.push(L); created++;
+    loads.push(L); created++; newIds.push(L.id);
   }
-  return { created, leftover: Object.values(open).reduce((s,v)=>s+Math.max(0,v),0) };
+  // name every UNNAMED, non-empty load by its (distinct) customer names, e.g. "Test1/Test2"
+  // (user-given names are left untouched)
+  for(const L of loads){ if((!L.name || !L.name.trim()) && Object.values(L.assign).some(v=>v>0)) L.name = autoLoadName(L); }
+  reorderLoadsBySharedOrders();   // cluster loads that share an order next to each other
+  // every load that GAINED pallets this run (newly created OR a pre-existing one that got filled)
+  const presentIds = loads.filter(l=> palCount(l) > (before.get(l.id)||0)).map(l=>l.id);
+  return { created, leftover: Object.values(open).reduce((s,v)=>s+Math.max(0,v),0), newIds, presentIds };
+}
+// combined customer names of all orders on a load (distinct, "/"-joined) -> used as the load name
+function autoLoadName(L){
+  const names = [];
+  for(const o of orders){ if((L.assign[o.id]|0)>0){ const c=(o.customer||"").trim(); if(c && !names.includes(c)) names.push(c); } }
+  return names.join("/");
+}
+// reorder the loads array so loads sharing orders sit next to each other (greedy: most shared first)
+function reorderLoadsBySharedOrders(){
+  if(loads.length < 3) return;
+  const setOf = L => new Set(Object.keys(L.assign).filter(k=> (L.assign[k]|0)>0));
+  const sets = new Map(loads.map(l=>[l.id, setOf(l)]));
+  const shared = (a,b)=>{ let n=0; for(const k of sets.get(a.id)) if(sets.get(b.id).has(k)) n++; return n; };
+  const rest = loads.slice(), out = [rest.shift()];
+  while(rest.length){
+    const last = out[out.length-1];
+    let bi=0, best=-1;
+    for(let i=0;i<rest.length;i++){ const s=shared(last, rest[i]); if(s>best){ best=s; bi=i; } }
+    out.push(rest.splice(bi,1)[0]);
+  }
+  loads = out;
 }
 // pull the active load's fields into the mirror globals + sync the inputs that show them
 function syncActiveLoadMirror(){
@@ -185,7 +218,7 @@ function makeOrder(data={}){
   return Object.assign({
     id: uid++,
     color: nextColor(),
-    orderNo:"", customer:"", deliveryDate:"", destCode:"",
+    orderNo:"", customer:"", deliveryDate:"", destCode:"", customerNo:"", address:"",
     qty:1, length:1200, width:800, height:1200,
     loadMode:"optimized", sequence:1,
     stackable:false, active:false, remark:"",
@@ -197,15 +230,19 @@ let undoStack = [];
 let redoStack = [];
 // max remembered undo steps — configurable in the global settings dialog (settings.historyMax)
 function historyMax(){ const n = settings && +settings.historyMax; return (n>=1 && n<=999) ? n : 200; }
-// full app state — extend here when new persistent state is added (keeps undo/redo complete)
+// serialise / restore a hand-layout pallet array (orders referenced by id)
+const palToData = arr => arr.map(p=>({pid:p.pid, oid:p.order.id, color:p.color, w:p.w, h:p.h, x:p.x, y:p.y, stack:p.stack}));
+const palFromData = arr => arr.map(p=>({ pid:p.pid, order: orders.find(o=>o.id===p.oid) || orders[0],
+  color:p.color, w:p.w, h:p.h, x:p.x, y:p.y, stack:p.stack }));
+// full app state — extend here when new persistent state is added (keeps undo/redo + localStorage complete)
 function captureState(){
   return JSON.stringify({
     orders, uid, colorIdx, currentTruck, loadNote, loadName,
     loads, activeLoadId, loadSeq,
     manualMode: (typeof manualMode!=="undefined" && manualMode),
-    manualPallets: (typeof manualPallets!=="undefined" && manualPallets)
-      ? manualPallets.map(p=>({pid:p.pid, oid:p.order.id, color:p.color, w:p.w, h:p.h, x:p.x, y:p.y, stack:p.stack}))
-      : null,
+    manualPallets: (typeof manualPallets!=="undefined" && manualPallets) ? palToData(manualPallets) : null,
+    manualByLoad: (typeof manualByLoad!=="undefined") ? Object.fromEntries(Object.entries(manualByLoad).map(([k,a])=>[k, palToData(a)])) : null,
+    manualOnByLoad: (typeof manualOnByLoad!=="undefined") ? Object.assign({}, manualOnByLoad) : null,
   });
 }
 function applyState(s){
@@ -217,11 +254,30 @@ function applyState(s){
   if(!loads.some(l=>l.id===activeLoadId)) activeLoadId = loads[0].id;
   if(typeof manualMode!=="undefined"){
     manualMode = !!d.manualMode;
-    manualPallets = d.manualPallets
-      ? d.manualPallets.map(p=>({ pid:p.pid, order: orders.find(o=>o.id===p.oid) || orders[0],
-          color:p.color, w:p.w, h:p.h, x:p.x, y:p.y, stack:p.stack }))
-      : null;
+    manualPallets = d.manualPallets ? palFromData(d.manualPallets) : null;
   }
+  if(typeof manualByLoad!=="undefined"){
+    for(const k in manualByLoad) delete manualByLoad[k];
+    if(d.manualByLoad) for(const [k,a] of Object.entries(d.manualByLoad)) manualByLoad[k] = palFromData(a);
+  }
+  if(typeof manualOnByLoad!=="undefined"){
+    for(const k in manualOnByLoad) delete manualOnByLoad[k];
+    if(d.manualOnByLoad) Object.assign(manualOnByLoad, d.manualOnByLoad);
+  }
+}
+// ---- persist the whole working state to localStorage and restore it on reload ----
+const STATE_KEY = "lkwPlaner.state";
+let stateLoading = false;   // guard: don't re-save while restoring
+function saveState(){ if(stateLoading) return; try{ localStorage.setItem(STATE_KEY, captureState()); }catch(_){} }
+let _saveT = null;   // debounced save for high-frequency edits (typing in text fields)
+function saveStateSoon(){ if(stateLoading) return; if(_saveT) clearTimeout(_saveT); _saveT = setTimeout(()=>{ _saveT=null; saveState(); }, 400); }
+function loadState(){
+  let s; try{ s = localStorage.getItem(STATE_KEY); }catch(_){ s = null; }
+  if(!s) return false;
+  stateLoading = true;
+  try{ applyState(s); } catch(_){ stateLoading=false; return false; }
+  stateLoading = false;
+  return true;
 }
 // history entries are { snap, label }. label = name of the action that this snapshot precedes.
 // push a pre-change snapshot onto the undo stack (clears the redo chain)
